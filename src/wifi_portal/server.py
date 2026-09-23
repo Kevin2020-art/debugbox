@@ -1,18 +1,63 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-配网 HTTP 服务器：纯 Python 标准库实现（零外部依赖）
-处理：Captive Portal 强制弹窗探测、周边 Wi-Fi 扫描接口、提交 Wi-Fi 账号密码
-"""
-
 import os
 import json
 import logging
 import threading
+import socket
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
 
 logger = logging.getLogger("PortalServer")
+
+class CaptiveDNSServer:
+    """极轻量 DNS 泛解析劫持服务 (UDP 53)，促使手机自动弹出全屏配网登录窗口"""
+    def __init__(self, ip="192.168.4.1"):
+        self.ip = ip
+        self.sock = None
+        self.running = False
+        self.thread = None
+
+    def start(self):
+        self.running = True
+        try:
+            self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.sock.bind(("0.0.0.0", 53))
+            self.thread = threading.Thread(target=self._dns_loop, daemon=True)
+            self.thread.start()
+            logger.info(f"Captive DNS 泛解析劫持服务已在 UDP 53 启动 (全部域名解析至 {self.ip})")
+        except Exception as e:
+            logger.warning(f"无法启动 UDP 53 DNS 劫持服务: {e}")
+
+    def _dns_loop(self):
+        while self.running:
+            try:
+                data, addr = self.sock.recvfrom(512)
+                if len(data) < 12:
+                    continue
+
+                # 构造 DNS 应答报文 (Standard Query Response, No Error)
+                tid = data[:2]
+                flags = b"\x81\x80"
+                qdcount = data[4:6]
+                ancount = qdcount # 应答数与请求数相同
+                nscount = b"\x00\x00"
+                arcount = b"\x00\x00"
+
+                # 提取 Question 区段 (跳过 12 字节头部)
+                # 构造 Answer: Name 指针 0xc00c, Type A (0x0001), Class IN (0x0001), TTL 60s, Len 4, IP
+                ip_parts = [int(p) for p in self.ip.split(".")]
+                answer = b"\xc0\x0c\x00\x01\x00\x01\x00\x00\x00\x3c\x00\x04" + bytes(ip_parts)
+                response = tid + flags + qdcount + ancount + nscount + arcount + data[12:] + answer
+                self.sock.sendto(response, addr)
+            except Exception:
+                break
+
+    def stop(self):
+        self.running = False
+        if self.sock:
+            try:
+                self.sock.close()
+            except Exception:
+                pass
 
 class PortalHandler(BaseHTTPRequestHandler):
     wifi_controller = None
@@ -120,6 +165,8 @@ class PortalServer:
         self.on_connect = on_connect
         self.server = None
         self.thread = None
+        dns_ip = self.wifi_controller.ap_ip if self.wifi_controller else "192.168.4.1"
+        self.dns_server = CaptiveDNSServer(ip=dns_ip)
         self._load_html()
 
     def _load_html(self):
@@ -136,6 +183,9 @@ class PortalServer:
         PortalHandler.wifi_controller = self.wifi_controller
         PortalHandler.on_connect_requested = self.on_connect
 
+        # 启动 UDP 53 DNS 泛解析劫持 (促使手机全屏弹窗)
+        self.dns_server.start()
+
         # 如果标准 80 端口无权限（非 root），可以备选 8080
         try:
             self.server = HTTPServer((self.host, self.port), PortalHandler)
@@ -149,6 +199,7 @@ class PortalServer:
         self.thread.start()
 
     def stop(self):
+        self.dns_server.stop()
         if self.server:
             logger.info("关闭配网 HTTP 服务...")
             self.server.shutdown()

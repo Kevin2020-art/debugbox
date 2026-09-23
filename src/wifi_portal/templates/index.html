@@ -430,7 +430,6 @@
       if (isConnecting) return;
       const ssid = document.getElementById('ssidInput').value.trim();
       const password = document.getElementById('pwdInput').value;
-      const statusBox = document.getElementById('statusBox');
       const submitBtn = document.getElementById('submitBtn');
 
       if (!ssid) {
@@ -440,29 +439,43 @@
 
       isConnecting = true;
       submitBtn.disabled = true;
-      submitBtn.innerHTML = '<div class="spinner"></div> 正在配置连接...';
-      showStatus('正在发送配置并切换网络，热点即将断开...', 'info');
+      submitBtn.innerHTML = '<div class="spinner"></div> 正在下发配置...';
 
+      // 发送配网凭证到后台
       try {
-        const res = await fetch('/api/connect', {
+        fetch('/api/connect', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ssid, password })
         });
-        const result = await res.json();
-
-        if (result.status === 'ok') {
-          showStatus(`✓ 配置已提交！树莓派正在接入 [${escapeHtml(ssid)}]。<br>请观察机身绿色指示灯：常亮代表已联网，双跳心跳代表外网穿透就绪！`, 'success');
-        } else {
-          showStatus(`连接失败: ${result.message || '未知错误'}`, 'error');
-          isConnecting = false;
-          submitBtn.disabled = false;
-          submitBtn.innerHTML = '<span>重试连接</span>';
-        }
-      } catch (err) {
-        // 热点断开时 fetch 可能会抛异常，这通常意味着设备已经切换去连接目标 Wi-Fi 了
-        showStatus(`配置已生效！热点已关闭并切换到目标网络。<br>若机身灯常亮/双跳，说明联网成功；如需重新配置可长按按键 3 秒。`, 'success');
+      } catch (e) {
+        // 热点关闭时报错忽略
       }
+
+      // 无论热点是否断开，立即向工人展示清晰明确的指引卡片
+      setTimeout(() => {
+        const cardEl = document.querySelector('.card');
+        cardEl.innerHTML = `
+          <div style="text-align: center; padding: 16px 4px;">
+            <div style="width: 56px; height: 56px; margin: 0 auto 16px; background: rgba(16, 185, 129, 0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 28px; color: #10b981; border: 1px solid rgba(16, 185, 129, 0.4);">
+              ✓
+            </div>
+            <h2 style="font-size: 20px; font-weight: 700; color: #f8fafc; margin-bottom: 8px;">配置已成功发送！</h2>
+            <p style="color: #94a3b8; font-size: 14px; line-height: 1.6; margin-bottom: 18px;">
+              配网热点已关闭，树莓派正在接入网络：<br>
+              <strong style="color: #60a5fa; font-size: 16px;">[ ${escapeHtml(ssid)} ]</strong>
+            </p>
+            <div style="background: rgba(37, 99, 235, 0.12); border: 1px solid rgba(37, 99, 235, 0.3); border-radius: 12px; padding: 14px; text-align: left; margin-bottom: 16px;">
+              <div style="font-weight: 600; color: #93c5fd; font-size: 13px; margin-bottom: 6px;">👉 结果确认指引：</div>
+              <div style="font-size: 13px; color: #cbd5e1; line-height: 1.6;">
+                1. 请观察开发板机身白灯；<br>
+                2. 当白灯转为 <strong>【心跳双闪（两跳一停）】</strong> 即代表成功连网！<br>
+                3. 您现在可以断开热点并关闭此网页。
+              </div>
+            </div>
+          </div>
+        `;
+      }, 600);
     }
 
     function showStatus(html, type) {
