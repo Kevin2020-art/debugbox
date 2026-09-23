@@ -1,0 +1,17 @@
+[Unit]
+Description=DebugBox Network & GPIO Hardware Supervisor
+After=network.target NetworkManager.service debugbox-gpio.service
+Wants=NetworkManager.service debugbox-gpio.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/debugbox
+ExecStart=/usr/bin/python3 /opt/debugbox/src/network_service.py
+Restart=always
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

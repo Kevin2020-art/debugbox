@@ -1,0 +1,16 @@
+[Unit]
+Description=DebugBox C-Language GPIO Button & LED Supervisor
+After=local-fs.target
+Wants=local-fs.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/local/bin/debugbox_gpio_daemon --btn 17 --led 27 --chip /dev/gpiochip0 --time 3.0 --reset-cmd "/opt/debugbox/scripts/on_network_reset.sh"
+Restart=always
+RestartSec=2s
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

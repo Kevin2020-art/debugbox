@@ -1,0 +1,20 @@
+# 工业远程调试伴侣盒配置文件 (Debug Box Configuration)
+
+hardware:
+  button_pin: 17             # 网络重置按键 GPIO (Pin 11)，另一端接 GND
+  led_pin: 27                # 状态指示灯 GPIO (Pin 13)，串联 330 欧姆电阻到 GND
+  long_press_seconds: 3.0    # 触发重置的长按判定时间 (秒)
+  debounce_time: 0.05        # 按键去抖动时间 (秒)
+
+wifi:
+  interface: "wlan0"         # 树莓派无线网卡名
+  ap_ssid_prefix: "DebugBox" # 热点名称前缀，后接MAC后4位，如: DebugBox-A1B2
+  ap_password: ""            # 热点密码（空表示免密，方便工人直接连入）
+  ap_ip: "192.168.4.1"       # 热点模式下的静态IP
+  ap_subnet: "24"
+  portal_port: 80            # 手机配网网页服务端口 (默认 80，工人连上后免输端口)
+  connect_timeout: 25        # 尝试连接工厂 Wi-Fi 的超时时间 (秒)
+
+system:
+  log_dir: "/var/log/debugbox"
+  status_check_interval: 5   # 网络状态轮询间隔 (秒)

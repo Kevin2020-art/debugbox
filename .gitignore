@@ -1,0 +1,16 @@
+# C 编译生成的目标与可执行文件
+*.o
+src/c_gpio/debugbox_gpio_daemon
+src/c_gpio/gpio_ctl
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 系统与运行时文件
+*.sock
+*.log
+.DS_Store
+.vscode/
+.idea/
