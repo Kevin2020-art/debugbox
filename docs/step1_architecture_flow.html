@@ -1,0 +1,923 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>阶段一全景架构与调用时序流程图 - 远程调试伴侣盒</title>
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: rgba(22, 30, 46, 0.85);
+      --card-border: #1e293b;
+      --text: #f1f5f9;
+      --text-muted: #94a3b8;
+      --accent-c: #06b6d4;      /* C语言模块：青色 */
+      --accent-py: #eab308;     /* Python模块：黄色 */
+      --accent-sys: #8b5cf6;    /* 系统/Systemd：紫色 */
+      --accent-web: #3b82f6;    /* Web/前端：蓝色 */
+      --accent-success: #10b981;/* 成功/在线：绿色 */
+      --accent-warn: #f97316;   /* 重置/告警：橙色 */
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    body {
+      background: radial-gradient(circle at 50% 0%, #1e1b4b 0%, var(--bg) 60%);
+      color: var(--text);
+      padding: 24px;
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+
+    /* 顶部标题区 */
+    header {
+      text-align: center;
+      padding: 24px 0 12px;
+    }
+    .badge {
+      display: inline-block;
+      background: rgba(6, 182, 212, 0.15);
+      color: var(--accent-c);
+      padding: 4px 14px;
+      border-radius: 9999px;
+      font-size: 13px;
+      font-weight: 600;
+      border: 1px solid rgba(6, 182, 212, 0.3);
+      margin-bottom: 12px;
+    }
+    h1 {
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 8px;
+    }
+    header p {
+      color: var(--text-muted);
+      font-size: 15px;
+    }
+
+    /* 交互式 LED 虚拟指示器 */
+    .led-simulator-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 20px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+      backdrop-filter: blur(12px);
+    }
+    .led-box {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .led-bulb {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: #334155;
+      border: 2px solid #64748b;
+      transition: all 0.05s ease;
+    }
+    .led-bulb.lit {
+      background: #ffffff;
+      box-shadow: 0 0 20px #ffffff, 0 0 35px #60a5fa;
+      border-color: #ffffff;
+    }
+    .led-desc-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #fff;
+    }
+    .led-desc-sub {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .led-btn-group {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .led-btn {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--card-border);
+      color: var(--text);
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .led-btn:hover {
+      background: rgba(255, 255, 255, 0.12);
+    }
+    .led-btn.active {
+      background: rgba(6, 182, 212, 0.2);
+      border-color: var(--accent-c);
+      color: #67e8f9;
+    }
+
+    /* 选项卡切换三条主线流程 */
+    .tab-nav {
+      display: flex;
+      gap: 12px;
+      border-bottom: 1px solid var(--card-border);
+      padding-bottom: 8px;
+    }
+    .tab-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 15px;
+      font-weight: 600;
+      padding: 8px 16px;
+      cursor: pointer;
+      border-radius: 8px;
+      transition: all 0.2s;
+    }
+    .tab-btn:hover {
+      color: #fff;
+    }
+    .tab-btn.active {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.08);
+      border-bottom: 2px solid var(--accent-c);
+    }
+
+    /* 流程图区域 */
+    .flow-container {
+      display: none;
+      flex-direction: column;
+      gap: 16px;
+      position: relative;
+    }
+    .flow-container.active {
+      display: flex;
+    }
+
+    /* 节点卡片 */
+    .node-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 18px 22px;
+      display: flex;
+      gap: 20px;
+      position: relative;
+      transition: transform 0.2s, border-color 0.2s;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+    }
+    .node-card:hover {
+      transform: translateY(-2px);
+      border-color: #475569;
+    }
+
+    .node-step-num {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      font-weight: 800;
+      flex-shrink: 0;
+    }
+
+    .node-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .node-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .node-title {
+      font-size: 16px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .node-tags {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .tag {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 6px;
+      letter-spacing: 0.3px;
+    }
+    .tag-c { background: rgba(6, 182, 212, 0.15); color: #67e8f9; border: 1px solid rgba(6, 182, 212, 0.3); }
+    .tag-py { background: rgba(234, 179, 8, 0.15); color: #fde047; border: 1px solid rgba(234, 179, 8, 0.3); }
+    .tag-sys { background: rgba(139, 92, 246, 0.15); color: #c4b5fd; border: 1px solid rgba(139, 92, 246, 0.3); }
+    .tag-web { background: rgba(59, 130, 246, 0.15); color: #93c5fd; border: 1px solid rgba(59, 130, 246, 0.3); }
+    .tag-hw { background: rgba(16, 185, 129, 0.15); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.3); }
+
+    .node-desc {
+      font-size: 14px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    /* 涉及文件列表 */
+    .file-box {
+      margin-top: 6px;
+      background: #0b1120;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 13px;
+    }
+    .file-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+    .file-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .file-item {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+    .file-path {
+      color: #38bdf8;
+      font-weight: 600;
+      word-break: break-all;
+    }
+    .file-action {
+      color: #94a3b8;
+      font-size: 12px;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    /* 连线箭头 */
+    .flow-arrow {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      color: #475569;
+      font-size: 18px;
+      margin: -6px 0;
+    }
+
+    /* 文件全景表格 */
+    .matrix-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 24px;
+      margin-top: 12px;
+      overflow-x: auto;
+    }
+    .matrix-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 16px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th, td {
+      padding: 12px 14px;
+      text-align: left;
+      border-bottom: 1px solid var(--card-border);
+    }
+    th {
+      color: #94a3b8;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    td code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      color: #38bdf8;
+    }
+
+    footer {
+      text-align: center;
+      font-size: 13px;
+      color: var(--text-muted);
+      padding: 16px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    
+    <header>
+      <div class="badge">Raspberry Pi 4B · 工业级架构解析</div>
+      <h1>阶段一：手机配网与 C 语言 GPIO 硬件驱动时序全景</h1>
+      <p>详细记录系统从上电启动、自动连网、手机 AP 弹窗配网、到硬件长按 3 秒重置的全节点代码调用链路</p>
+    </header>
+
+    <!-- 交互式指示灯模拟器 -->
+    <div class="led-simulator-card">
+      <div class="led-box">
+        <div class="led-bulb" id="ledBulb"></div>
+        <div>
+          <div class="led-desc-title" id="ledTitle">心跳双闪 (ONLINE)</div>
+          <div class="led-desc-sub" id="ledSub">0.1s开 -> 0.15s关 -> 0.1s开 -> 1.65s关 (已连入工厂网络)</div>
+        </div>
+      </div>
+      <div class="led-btn-group">
+        <button class="led-btn" onclick="setLedMode('CONNECTING')">开机连网中 (中速快闪)</button>
+        <button class="led-btn" onclick="setLedMode('AP_MODE')">无网配热点 (悠闲慢闪)</button>
+        <button class="led-btn active" onclick="setLedMode('ONLINE')">已就绪 (心跳双闪)</button>
+        <button class="led-btn" onclick="setLedMode('RESETTING')">长按满3秒 (急促狂闪)</button>
+      </div>
+    </div>
+
+    <!-- 流程切换选项卡 -->
+    <div class="tab-nav">
+      <button class="tab-btn active" onclick="switchTab('flow1')">流程 1：开机自启与已知 Wi-Fi 连通链路</button>
+      <button class="tab-btn" onclick="switchTab('flow2')">流程 2：去到新工厂 · 手机 AP 全自动弹窗配网</button>
+      <button class="tab-btn" onclick="switchTab('flow3')">流程 3：物理按键长按 3 秒硬件重置自愈链路</button>
+    </div>
+
+    <!-- ================================= 流程 1 ================================= -->
+    <div class="flow-container active" id="flow1">
+      
+      <div class="node-card">
+        <div class="node-step-num" style="color: var(--accent-sys);">1</div>
+        <div class="node-content">
+          <div class="node-header">
+            <div class="node-title">树莓派通电开机，systemd 拉起 C 语言硬件控制器</div>
+            <div class="node-tags">
+              <span class="tag tag-sys">systemd</span>
+              <span class="tag tag-c">纯 C 守护进程</span>
+            </div>
+          </div>
+          <div class="node-desc">
+            Debian 内核挂载文件系统后，首先启动 `debugbox-gpio.service`。C 二进制守护进程打开内核 GPIO 字符设备，接管引脚，并创建本地通信套接字。白灯默认置为中速快闪（CONNECTING）。
+          </div>
+          <div class="file-box">
+            <div class="file-title">执行的文件与代码位置：</div>
+            <div class="file-list">
+              <div class="file-item">
+                <span class="file-path">config/systemd/debugbox-gpio.service</span>
+                <span class="file-action">→ 配置在 local-fs.target 之后启动守护进程</span>
+              </div>
+              <div class="file-item">
+                <span class="file-path">src/c_gpio/main.c (main: L115)</span>
+                <span class="file-action">→ 打开 /dev/gpiochip0，创建 /run/debugbox_gpio.sock (权限 0666)</span>
+              </div>
+              <div class="file-item">
+                <span class="file-path">src/c_gpio/gpio_controller.c (init & start)</span>
+                <span class="file-action">→ 申请 GPIO 17 (上拉输入) 和 GPIO 27 (输出)，拉起 led_worker 与 btn_worker 线程</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flow-arrow">↓</div>
+
+      <div class="node-card">
+        <div class="node-step-num" style="color: var(--accent-py);">2</div>
+        <div class="node-content">
+          <div class="node-header">
+            <div class="node-title">systemd 启动网络总控服务，检测 Wi-Fi 连通状态</div>
+            <div class="node-tags">
+              <span class="tag tag-sys">systemd</span>
+              <span class="tag tag-py">Python 胶水层</span>
+            </div>
+          </div>
+          <div class="node-desc">
+            启动 `debugbox-network.service`，总控进程读取配置参数，并通过 Linux 原生 NetworkManager 轮询无线网卡连接状态。
+          </div>
+          <div class="file-box">
+            <div class="file-title">执行的文件与代码位置：</div>
+            <div class="file-list">
+              <div class="file-item">
+                <span class="file-path">config/config.yaml</span>
+                <span class="file-action">→ 读取引脚编号 17/27，热点前缀 DebugBox，检测超时参数</span>
+              </div>
+              <div class="file-item">
+                <span class="file-path">src/network_service.py (start: L106)</span>
+                <span class="file-action">→ 执行 start() 主生命周期，等待 NetworkManager 连网握手</span>
+              </div>
+              <div class="file-item">
+                <span class="file-path">src/wifi_portal/wifi_controller.py (is_connected_to_wifi)</span>
+                <span class="file-action">→ 执行 nmcli -t -f DEVICE,TYPE,STATE device 检查 wlan0 状态</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flow-arrow">↓</div>
+
+      <div class="node-card">
+        <div class="node-step-num" style="color: var(--accent-success);">3</div>
+        <div class="node-content">
+          <div class="node-header">
+            <div class="node-title">成功连接已知网络，跨进程通知 C 守护进程切换心跳灯</div>
+            <div class="node-tags">
+              <span class="tag tag-py">Socket 客户端</span>
+              <span class="tag tag-c">Socket 服务端</span>
+              <span class="tag tag-hw">硬件就绪</span>
+            </div>
+          </div>
+          <div class="node-desc">
+            发现已经连上已知路由器（如当前的小米路由器，拿到 IP: 192.168.31.107），Python 客户端连接 `/run/debugbox_gpio.sock` 发送 `SET ONLINE` 指令。C 语言线程瞬间将白灯切换为心跳双闪。
+          </div>
+          <div class="file-box">
+            <div class="file-title">执行的文件与代码位置：</div>
+            <div class="file-list">
+              <div class="file-item">
+                <span class="file-path">src/gpio_manager/c_gpio_client.py (set_state)</span>
+                <span class="file-action">→ 打开 /run/debugbox_gpio.sock，向 C 进程下发 "SET ONLINE\n"</span>
+              </div>
+              <div class="file-item">
+                <span class="file-path">src/c_gpio/main.c (accept 循环: L165)</span>
+                <span class="file-action">→ C 守护进程解析指令，调用 gpio_controller_set_led_state(&ctrl, LED_STATE_ONLINE)</span>
+              </div>
+              <div class="file-item">
+                <span class="file-path">src/c_gpio/gpio_controller.c (led_worker: L63)</span>
+                <span class="file-action">→ 独立 pthread 按照 0.1s开/0.15s关/0.1s开/1.65s关 精准循环，系统进入就绪态</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ================================= 流程 2 ================================= -->
+    <div class="flow-container" id="flow2">
+
+      <div class="node-card">
+        <div class="node-step-num" style="color: var(--accent-warn);">1</div>
+        <div class="node-content">
+          <div class="node-header">
+            <div class="node-title">在新工厂未搜到已存网络，总控自动启动 AP 配网模式</div>
+            <div class="node-tags">
+              <span class="tag tag-py">网络总控</span>
+              <span class="tag tag-sys">NetworkManager</span>
+            </div>
+          </div>
+          <div class="node-desc">
+            开机超时未连网，或长按按键触发重置后，`network_service.py` 执行 `_enter_ap_mode()`，通过 NetworkManager 开启名为 `DebugBox-8B53` 的热点（静态 IP: 192.168.4.1）。
+          </div>
+          <div class="file-box">
+            <div class="file-title">执行的文件与代码位置：</div>
+            <div class="file-list">
+              <div class="file-item">
+                <span class="file-path">src/network_service.py (_enter_ap_mode: L133)</span>
+                <span class="file-action">→ 通知 C 守护进程切换为 AP_MODE (慢闪)，调用 wifi.start_hotspot_ap()</span>
+              </div>
+              <div class="file-item">
+                <span class="file-path">src/wifi_portal/wifi_controller.py (start_hotspot_ap: L165)</span>
+                <span class="file-action">→ 执行 nmcli con add mode ap ipv4.method shared 生成热点连接并激活</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flow-arrow">↓</div>
+
+      <div class="node-card">
+        <div class="node-step-num" style="color: var(--accent-sys);">2</div>
+        <div class="node-content">
+          <div class="node-header">
+            <div class="node-title">NetworkManager 自动加载 DNS 泛解析，Python 开启 Web 80 服务</div>
+            <div class="node-tags">
+              <span class="tag tag-sys">dnsmasq 泛解析</span>
+              <span class="tag tag-web">Captive HTTP</span>
+            </div>
+          </div>
+          <div class="node-desc">
+            NetworkManager 内部的 dnsmasq 自动读取泛解析规则，将一切外网域名解析为 `192.168.4.1`。同时 Python 开启端口 80 监听，准备拦截苹果/安卓探针。
+          </div>
+          <div class="file-box">
+            <div class="file-title">执行的文件与代码位置：</div>
+            <div class="file-list">
+              <div class="file-item">
+                <span class="file-path">/etc/NetworkManager/dnsmasq-shared.d/00-captive-portal.conf</span>
+                <span class="file-action">→ address=/#/192.168.4.1 (将所有 DNS 请求劫持为本机 IP)</span>
+              </div>
+              <div class="file-item">
+                <span class="file-path">src/wifi_portal/server.py (PortalServer.start: L145)</span>
+                <span class="file-action">→ 监听 0.0.0.0:80，预载入 HTML 模板，严禁任何 HTTP 缓存</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flow-arrow">↓</div>
+
+      <div class="node-card">
+        <div class="node-step-num" style="color: var(--accent-web);">3</div>
+        <div class="node-content">
+          <div class="node-header">
+            <div class="node-title">工人手机连入热点，触发全自动全屏弹窗</div>
+            <div class="node-tags">
+              <span class="tag tag-web">自动弹窗</span>
+              <span class="tag tag-sys">探针拦截</span>
+            </div>
+          </div>
+          <div class="node-desc">
+            手机连入热点，后台向 `captive.apple.com` 发出探测，被拦截并返回 302 重定向至 `http://192.168.4.1/`，手机操作系统全屏弹出配网页。页面异步请求周边 Wi-Fi 列表。
+          </div>
+          <div class="file-box">
+            <div class="file-title">执行的文件与代码位置：</div>
+            <div class="file-list">
+              <div class="file-item">
+                <span class="file-path">src/wifi_portal/server.py (do_GET: L31)</span>
+                <span class="file-action">→ 拦截 Host 与 /hotspot-detect.html、/generate_204，返回 302 跳转</span>
+              </div>
+              <div class="file-item">
+                <span class="file-path">src/wifi_portal/templates/index.html</span>
+                <span class="file-action">→ 渲染自适应触屏 UI，调用 fetch('/api/scan') 刷新车间 Wi-Fi</span>
+              </div>
+              <div class="file-item">
+                <span class="file-path">src/wifi_portal/wifi_controller.py (scan_wifi_list)</span>
+                <span class="file-action">→ 执行 nmcli dev wifi list --rescan，去重排序后返回 JSON 给前端</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flow-arrow">↓</div>
+
+      <div class="node-card">
+        <div class="node-step-num" style="color: var(--accent-success);">4</div>
+        <div class="node-content">
+          <div class="node-header">
+            <div class="node-title">工人点选密码提交，热点平滑关闭，树莓派接入新网络</div>
+            <div class="node-tags">
+              <span class="tag tag-web">前端成功卡片</span>
+              <span class="tag tag-py">网络切换</span>
+              <span class="tag tag-c">心跳双闪恢复</span>
+            </div>
+          </div>
+          <div class="node-desc">
+            工人点击“保存并连接”，前端立即展示绿色指引卡片；树莓派收到密码后关闭自身 AP 模式，切入 Station 模式连接车间网络。联网成功后，C 守护进程将白灯切为心跳双闪。
+          </div>
+          <div class="file-box">
+            <div class="file-title">执行的文件与代码位置：</div>
+            <div class="file-list">
+              <div class="file-item">
+                <span class="file-path">src/wifi_portal/templates/index.html (submitConnect: L430)</span>
+                <span class="file-action">→ 发送 POST /api/connect，页面替换为“配置已发送，观察白灯心跳双闪”指引</span>
+              </div>
+              <div class="file-item">
+                <span class="file-path">src/wifi_portal/server.py (do_POST: L73)</span>
+                <span class="file-action">→ 响应 ok 后，延迟 0.8s 异步调用 on_worker_submitted_wifi</span>
+              </div>
+              <div class="file-item">
+                <span class="file-path">src/wifi_portal/wifi_controller.py (connect_wifi: L215)</span>
+                <span class="file-action">→ 执行 nmcli dev wifi connect <SSID> password <PWD> 完成联网</span>
+              </div>
+              <div class="file-item">
+                <span class="file-path">src/gpio_manager/c_gpio_client.py → src/c_gpio/main.c</span>
+                <span class="file-action">→ 发送 SET ONLINE，白灯恢复心跳双闪，工人和工程师可远程连入！</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ================================= 流程 3 ================================= -->
+    <div class="flow-container" id="flow3">
+
+      <div class="node-card">
+        <div class="node-step-num" style="color: var(--accent-warn);">1</div>
+        <div class="node-content">
+          <div class="node-header">
+            <div class="node-title">工人物理长按复位按键（GPIO 17 / Pin 11）</div>
+            <div class="node-tags">
+              <span class="tag tag-hw">物理触点</span>
+              <span class="tag tag-c">10ms 采样消抖</span>
+            </div>
+          </div>
+          <div class="node-desc">
+            按键一端接 GPIO 17，另一端接 GND。按下瞬间电平由 HIGH 变 LOW，C 守护进程的 `btn_worker` 线程以 10ms 频率采样消抖并记录按下起始时间戳。
+          </div>
+          <div class="file-box">
+            <div class="file-title">执行的文件与代码位置：</div>
+            <div class="file-list">
+              <div class="file-item">
+                <span class="file-path">src/c_gpio/gpio_controller.c (btn_worker: L95)</span>
+                <span class="file-action">→ gpiod_line_request_get_value(ctrl->btn_request, 17) 检测电平闭合</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flow-arrow">↓</div>
+
+      <div class="node-card">
+        <div class="node-step-num" style="color: var(--accent-warn);">2</div>
+        <div class="node-content">
+          <div class="node-header">
+            <div class="node-title">长按满 3.0 秒触发判决，LED 硬件级狂闪提示松手</div>
+            <div class="node-tags">
+              <span class="tag tag-c">单调时钟</span>
+              <span class="tag tag-hw">急促狂闪</span>
+            </div>
+          </div>
+          <div class="node-desc">
+            通过 `clock_gettime(CLOCK_MONOTONIC)` 计算按下时长。达到 3.0 秒瞬间，C 守护进程立即把白灯切为 `RESETTING`（0.08s 开/0.08s 关急促狂闪），工人看到狂闪便知重置已生效，随即松手。
+          </div>
+          <div class="file-box">
+            <div class="file-title">执行的文件与代码位置：</div>
+            <div class="file-list">
+              <div class="file-item">
+                <span class="file-path">src/c_gpio/gpio_controller.c (L110)</span>
+                <span class="file-action">→ now - press_start >= 3.0s 判定达成，设置 current_state = LED_STATE_RESETTING</span>
+              </div>
+              <div class="file-item">
+                <span class="file-path">src/c_gpio/main.c (on_reset_triggered: L25)</span>
+                <span class="file-action">→ C 守护进程捕获回调，执行系统异步命令：bash /opt/debugbox/scripts/on_network_reset.sh &</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flow-arrow">↓</div>
+
+      <div class="node-card">
+        <div class="node-step-num" style="color: var(--accent-sys);">3</div>
+        <div class="node-content">
+          <div class="node-header">
+            <div class="node-title">执行重置脚本，清空已存 Wi-Fi 配置并重启配网</div>
+            <div class="node-tags">
+              <span class="tag tag-sys">Shell 脚本</span>
+              <span class="tag tag-sys">NetworkManager</span>
+            </div>
+          </div>
+          <div class="node-desc">
+            脚本枚举所有 `802-11-wireless` 连接（安全过滤空格），执行 `nmcli connection delete` 删除车间老网络，并重启 `debugbox-network.service`，无缝流转进入流程 2 的 AP 模式（白灯慢闪）。
+          </div>
+          <div class="file-box">
+            <div class="file-title">执行的文件与代码位置：</div>
+            <div class="file-list">
+              <div class="file-item">
+                <span class="file-path">scripts/on_network_reset.sh (L9)</span>
+                <span class="file-action">→ while IFS=: read -r conn type; do nmcli connection delete "$conn"; done</span>
+              </div>
+              <div class="file-item">
+                <span class="file-path">scripts/on_network_reset.sh (L16)</span>
+                <span class="file-action">→ systemctl restart debugbox-network.service</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ================================= 全局文件职责矩阵表 ================================= -->
+    <div class="matrix-card">
+      <div class="matrix-title">📋 阶段一涉及文件职责与技术栈全景矩阵</div>
+      <table>
+        <thead>
+          <tr>
+            <th>文件路径</th>
+            <th>技术栈 / 语言</th>
+            <th>角色与职责</th>
+            <th>运行环境 / 权限</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>src/c_gpio/gpio_controller.h</code></td>
+            <td>C 语言头文件</td>
+            <td>定义 LED 状态枚举、引脚配置结构体、多线程与 libgpiod v2 函数原型</td>
+            <td>编译期头文件</td>
+          </tr>
+          <tr>
+            <td><code>src/c_gpio/gpio_controller.c</code></td>
+            <td>C 语言 / libgpiod v2</td>
+            <td>内核字符设备驱动交互、微秒级可中断 LED 闪烁波形线程、10ms 按键长按消抖线程</td>
+            <td>树莓派本地编译 (GCC 14.2)</td>
+          </tr>
+          <tr>
+            <td><code>src/c_gpio/main.c</code></td>
+            <td>C 语言</td>
+            <td>编译生成 <code>debugbox_gpio_daemon</code> 守护进程与 <code>gpio_ctl</code> 命令行工具，监听 <code>/run/debugbox_gpio.sock</code></td>
+            <td>root 常驻 (内存仅 1.5MB)</td>
+          </tr>
+          <tr>
+            <td><code>src/gpio_manager/c_gpio_client.py</code></td>
+            <td>Python 3 (socket)</td>
+            <td>封装 UNIX Domain Socket 客户端，供 Python 服务毫秒级向 C 守护进程发送 <code>SET ONLINE</code> 等指令</td>
+            <td>用户态 Python 模块</td>
+          </tr>
+          <tr>
+            <td><code>config/00-captive-portal.conf</code></td>
+            <td>dnsmasq 规则</td>
+            <td><code>address=/#/192.168.4.1</code>：让 NetworkManager 自带的 dnsmasq 将所有 DNS 查询解析为本机，促使手机强行弹窗</td>
+            <td><code>/etc/NetworkManager/dnsmasq-shared.d/</code></td>
+          </tr>
+          <tr>
+            <td><code>src/wifi_portal/server.py</code></td>
+            <td>Python 3 (http.server)</td>
+            <td>零依赖轻量 HTTP 80 服务，拦截苹果/安卓 Captive 探针重定向至根路径，提供扫描与连接 API</td>
+            <td>root 监听 80 端口</td>
+          </tr>
+          <tr>
+            <td><code>src/wifi_portal/templates/index.html</code></td>
+            <td>HTML5 / CSS3 / Vanilla JS</td>
+            <td>工人手机配网自适应网页，支持 Wi-Fi 信号格显示、密码显隐开关、提交后立刻展示白灯心跳指引卡片</td>
+            <td>手机浏览器运行</td>
+          </tr>
+          <tr>
+            <td><code>src/wifi_portal/wifi_controller.py</code></td>
+            <td>Python 3 (subprocess)</td>
+            <td>封装 Linux <code>nmcli</code> 命令：热点创建 (AP)、周边扫描、删除老配置、连入新网络</td>
+            <td>系统管理进程</td>
+          </tr>
+          <tr>
+            <td><code>src/network_service.py</code></td>
+            <td>Python 3 (大脑总控)</td>
+            <td>阶段一业务大脑：开机连网侦测、超时自动切 AP 模式、监控网络健康、掉线自愈</td>
+            <td>systemd 守护进程</td>
+          </tr>
+          <tr>
+            <td><code>scripts/on_network_reset.sh</code></td>
+            <td>Bash Shell 脚本</td>
+            <td>长按满 3 秒时由 C 程序调用的清网脚本：安全删除带空格的旧 SSID，重启网络总控进入配网</td>
+            <td>root 权限可执行</td>
+          </tr>
+          <tr>
+            <td><code>config/systemd/*.service</code></td>
+            <td>systemd 单元</td>
+            <td>配置 <code>debugbox-gpio.service</code> 与 <code>debugbox-network.service</code> 开机自启与失败自重启规则</td>
+            <td><code>/etc/systemd/system/</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <footer>
+      工业远程调试伴侣盒 · 架构文档生成完毕 · 2026
+    </footer>
+
+  </div>
+
+  <script>
+    // 选项卡切换
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.flow-container').forEach(flow => flow.classList.remove('active'));
+      event.target.classList.add('active');
+      document.getElementById(tabId).classList.add('active');
+    }
+
+    // 虚拟 LED 模拟器
+    let ledInterval = null;
+    const bulb = document.getElementById('ledBulb');
+    const titleEl = document.getElementById('ledTitle');
+    const subEl = document.getElementById('ledSub');
+
+    const ledPatterns = {
+      CONNECTING: {
+        title: "开机连网中 (CONNECTING)",
+        sub: "中速快闪：亮 0.25s -> 灭 0.25s (系统正在搜索或连接网络)",
+        run: () => {
+          let on = false;
+          return setInterval(() => {
+            on = !on;
+            bulb.className = on ? 'led-bulb lit' : 'led-bulb';
+          }, 250);
+        }
+      },
+      AP_MODE: {
+        title: "无网配热点 (AP_MODE)",
+        sub: "悠闲慢闪：亮 0.8s -> 灭 0.8s (等待工人拿出手机连热点)",
+        run: () => {
+          let on = false;
+          return setInterval(() => {
+            on = !on;
+            bulb.className = on ? 'led-bulb lit' : 'led-bulb';
+          }, 800);
+        }
+      },
+      ONLINE: {
+        title: "工作就绪 (ONLINE)",
+        sub: "心跳双闪：亮 0.1s -> 灭 0.15s -> 亮 0.1s -> 灭 1.65s (已成功联网)",
+        run: () => {
+          let step = 0;
+          function cycle() {
+            if (step === 0) { bulb.className = 'led-bulb lit'; setTimeout(cycle, 100); step = 1; }
+            else if (step === 1) { bulb.className = 'led-bulb'; setTimeout(cycle, 150); step = 2; }
+            else if (step === 2) { bulb.className = 'led-bulb lit'; setTimeout(cycle, 100); step = 3; }
+            else if (step === 3) { bulb.className = 'led-bulb'; setTimeout(cycle, 1650); step = 0; }
+          }
+          cycle();
+          return { cancel: true };
+        }
+      },
+      RESETTING: {
+        title: "长按满 3 秒 (RESETTING)",
+        sub: "急促狂闪：亮 0.08s -> 灭 0.08s (提示工人重置已确认，可以松手)",
+        run: () => {
+          let on = false;
+          return setInterval(() => {
+            on = !on;
+            bulb.className = on ? 'led-bulb lit' : 'led-bulb';
+          }, 80);
+        }
+      }
+    };
+
+    let activeCycle = null;
+
+    function setLedMode(mode) {
+      document.querySelectorAll('.led-btn').forEach(btn => btn.classList.remove('active'));
+      event.target.classList.add('active');
+
+      if (ledInterval) clearInterval(ledInterval);
+      bulb.className = 'led-bulb';
+
+      const pat = ledPatterns[mode];
+      titleEl.textContent = pat.title;
+      subEl.textContent = pat.sub;
+
+      if (mode === 'ONLINE') {
+        // 心跳独立定时器
+        let step = 0;
+        let isAlive = true;
+        activeCycle = () => { isAlive = false; };
+        function beat() {
+          if (!isAlive) return;
+          if (step === 0) { bulb.className = 'led-bulb lit'; setTimeout(beat, 100); step = 1; }
+          else if (step === 1) { bulb.className = 'led-bulb'; setTimeout(beat, 150); step = 2; }
+          else if (step === 2) { bulb.className = 'led-bulb lit'; setTimeout(beat, 100); step = 3; }
+          else if (step === 3) { bulb.className = 'led-bulb'; setTimeout(beat, 1650); step = 0; }
+        }
+        beat();
+      } else {
+        if (activeCycle) activeCycle();
+        ledInterval = pat.run();
+      }
+    }
+
+    // 默认进入 ONLINE 心跳模式
+    window.addEventListener('load', () => {
+      let step = 0;
+      function beat() {
+        if (step === 0) { bulb.className = 'led-bulb lit'; setTimeout(beat, 100); step = 1; }
+        else if (step === 1) { bulb.className = 'led-bulb'; setTimeout(beat, 150); step = 2; }
+        else if (step === 2) { bulb.className = 'led-bulb lit'; setTimeout(beat, 100); step = 3; }
+        else if (step === 3) { bulb.className = 'led-bulb'; setTimeout(beat, 1650); step = 0; }
+      }
+      beat();
+    });
+  </script>
+</body>
+</html>
