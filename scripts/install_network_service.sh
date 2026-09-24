@@ -30,6 +30,11 @@ cp -r "${SCRIPT_DIR}/src" "${INSTALL_DIR}/"
 cp -r "${SCRIPT_DIR}/scripts" "${INSTALL_DIR}/"
 chmod +x "${INSTALL_DIR}/scripts/"*.sh
 
+echo ">>> 4. 配置 NetworkManager AP 模式下的 DNS 泛解析 (自动弹窗)..."
+mkdir -p /etc/NetworkManager/dnsmasq-shared.d
+cp "${SCRIPT_DIR}/config/00-captive-portal.conf" /etc/NetworkManager/dnsmasq-shared.d/
+systemctl reload NetworkManager || true
+
 echo ">>> 4. 配置 systemd 开机自启守护服务..."
 cp "${INSTALL_DIR}/config/systemd/debugbox-gpio.service" /etc/systemd/system/
 cp "${INSTALL_DIR}/config/systemd/debugbox-network.service" /etc/systemd/system/
