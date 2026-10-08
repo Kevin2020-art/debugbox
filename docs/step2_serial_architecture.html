@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>阶段二全景架构与数据流向设计 - 串口守护进程 (C语言)</title>
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: rgba(22, 30, 46, 0.88);
+      --card-border: #1e293b;
+      --text: #f1f5f9;
+      --text-muted: #94a3b8;
+      --accent-c: #06b6d4;      /* C语言模块：青色 */
+      --accent-serial: #38bdf8; /* 串口：浅蓝 */
+      --accent-log: #10b981;    /* 日志存盘：绿色 */
+      --accent-hub: #8b5cf6;    /* Socket/终端：紫色 */
+      --accent-dut: #f59e0b;    /* 目标板DUT：琥珀色 */
+      --accent-danger: #ef4444; /* 告警/异常：红色 */
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    body {
+      background: radial-gradient(circle at 50% 0%, #1e1b4b 0%, var(--bg) 60%);
+      color: var(--text);
+      padding: 24px;
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+
+    .container {
+      max-width: 1240px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 32px;
+    }
+
+    /* 顶部标题区 */
+    header {
+      text-align: center;
+      padding: 24px 0 12px;
+    }
+    .badge {
+      display: inline-block;
+      background: rgba(6, 182, 212, 0.15);
+      color: var(--accent-c);
+      padding: 4px 14px;
+      border-radius: 9999px;
+      font-size: 13px;
+      font-weight: 600;
+      border: 1px solid rgba(6, 182, 212, 0.3);
+      margin-bottom: 12px;
+    }
+    h1 {
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 8px;
+    }
+    header p {
+      color: var(--text-muted);
+      font-size: 15px;
+      max-width: 760px;
+      margin: 0 auto;
+    }
+
+    /* 控制栏与交互演示器 */
+    .simulator-panel {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 20px 24px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+      backdrop-filter: blur(12px);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .sim-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .sim-title {
+      font-size: 16px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .sim-title .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #10b981;
+      box-shadow: 0 0 10px #10b981;
+    }
+    .btn-group {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      padding: 8px 16px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-dut {
+      background: rgba(245, 158, 11, 0.15);
+      color: #fbbf24;
+      border-color: rgba(245, 158, 11, 0.3);
+    }
+    .btn-dut:hover {
+      background: rgba(245, 158, 11, 0.28);
+      transform: translateY(-1px);
+    }
+    .btn-eng {
+      background: rgba(139, 92, 246, 0.15);
+      color: #c084fc;
+      border-color: rgba(139, 92, 246, 0.3);
+    }
+    .btn-eng:hover {
+      background: rgba(139, 92, 246, 0.28);
+      transform: translateY(-1px);
+    }
+    .btn-reset {
+      background: rgba(239, 68, 68, 0.15);
+      color: #f87171;
+      border-color: rgba(239, 68, 68, 0.3);
+    }
+    .btn-reset:hover {
+      background: rgba(239, 68, 68, 0.28);
+      transform: translateY(-1px);
+    }
+
+    /* 主架构可视化画布 */
+    .arch-canvas {
+      position: relative;
+      background: #0b1120;
+      border: 1px solid #1e293b;
+      border-radius: 14px;
+      padding: 30px 20px;
+      overflow-x: auto;
+    }
+
+    /* 架构图网格布局 */
+    .diagram-grid {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      min-width: 900px;
+    }
+
+    /* 节点样式 */
+    .node-box {
+      border-radius: 12px;
+      padding: 14px 20px;
+      text-align: center;
+      transition: all 0.3s ease;
+      position: relative;
+    }
+    .node-title {
+      font-weight: 700;
+      font-size: 14px;
+      margin-bottom: 4px;
+    }
+    .node-desc {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .dut-node {
+      width: 320px;
+      background: rgba(245, 158, 11, 0.12);
+      border: 1.5px solid rgba(245, 158, 11, 0.4);
+      color: #fbbf24;
+      box-shadow: 0 4px 20px rgba(245, 158, 11, 0.1);
+    }
+    .adapter-node {
+      width: 360px;
+      background: rgba(56, 189, 248, 0.12);
+      border: 1.5px dashed rgba(56, 189, 248, 0.5);
+      color: #38bdf8;
+    }
+
+    /* C 语言主守护进程外框 */
+    .daemon-container {
+      width: 96%;
+      max-width: 1040px;
+      background: rgba(15, 23, 42, 0.8);
+      border: 2px solid #06b6d4;
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 10px 40px rgba(6, 182, 212, 0.15);
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      position: relative;
+    }
+    .daemon-badge {
+      position: absolute;
+      top: -12px;
+      left: 24px;
+      background: #06b6d4;
+      color: #042f2e;
+      font-size: 12px;
+      font-weight: 800;
+      padding: 2px 12px;
+      border-radius: 9999px;
+      letter-spacing: 0.5px;
+    }
+
+    /* 事件循环核心 */
+    .poll-core {
+      background: linear-gradient(135deg, rgba(6, 182, 212, 0.15) 0%, rgba(30, 41, 59, 0.5) 100%);
+      border: 1px solid rgba(6, 182, 212, 0.35);
+      border-radius: 12px;
+      padding: 16px;
+      text-align: center;
+      transition: all 0.3s;
+    }
+    .poll-core.pulse {
+      box-shadow: 0 0 25px rgba(6, 182, 212, 0.6);
+      border-color: #22d3ee;
+    }
+
+    /* 内部两个并行分支 */
+    .daemon-submodules {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+
+    .submodule-card {
+      background: rgba(30, 41, 59, 0.6);
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 16px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      transition: all 0.3s ease;
+    }
+    .submodule-card.active-branch {
+      transform: translateY(-2px);
+    }
+    .submodule-log.active-branch {
+      border-color: #10b981;
+      box-shadow: 0 0 20px rgba(16, 185, 129, 0.25);
+    }
+    .submodule-hub.active-branch {
+      border-color: #a855f7;
+      box-shadow: 0 0 20px rgba(168, 85, 247, 0.25);
+    }
+
+    /* 底部输出端 */
+    .output-endpoints {
+      width: 96%;
+      max-width: 1040px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+    .endpoint-card {
+      border-radius: 12px;
+      padding: 18px 20px;
+      text-align: center;
+      transition: all 0.3s;
+    }
+    .endpoint-log {
+      background: rgba(16, 185, 129, 0.1);
+      border: 1.5px solid rgba(16, 185, 129, 0.4);
+      color: #34d399;
+    }
+    .endpoint-hub {
+      background: rgba(139, 92, 246, 0.1);
+      border: 1.5px solid rgba(139, 92, 246, 0.4);
+      color: #c084fc;
+    }
+
+    /* 连接线与流向动效 */
+    .flow-arrow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-muted);
+      height: 24px;
+    }
+    .arrow-icon {
+      font-size: 16px;
+      line-height: 1;
+    }
+
+    /* 实时双屏模拟控制台 */
+    .terminals-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+    @media (max-width: 860px) {
+      .terminals-grid {
+        grid-template-columns: 1fr;
+      }
+      .daemon-submodules {
+        grid-template-columns: 1fr;
+      }
+      .output-endpoints {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .terminal-window {
+      background: #040810;
+      border: 1px solid #1e293b;
+      border-radius: 12px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+    .terminal-titlebar {
+      background: #0f172a;
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #1e293b;
+    }
+    .window-dots {
+      display: flex;
+      gap: 6px;
+    }
+    .window-dots span {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+    .dot-r { background: #ef4444; }
+    .dot-y { background: #eab308; }
+    .dot-g { background: #22c55e; }
+    .terminal-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+    .terminal-body {
+      padding: 14px;
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      height: 240px;
+      overflow-y: auto;
+      background: #060a12;
+      color: #94a3b8;
+    }
+    .log-line {
+      margin-bottom: 4px;
+      word-break: break-all;
+    }
+    .log-ts {
+      color: #64748b;
+    }
+    .log-dut {
+      color: #38bdf8;
+    }
+    .log-input {
+      color: #ec4899;
+      font-weight: 700;
+    }
+    .log-sys {
+      color: #10b981;
+    }
+
+    /* 输入栏 */
+    .cli-input-bar {
+      display: flex;
+      background: #0f172a;
+      border-top: 1px solid #1e293b;
+      padding: 8px 12px;
+      gap: 8px;
+    }
+    .cli-prompt {
+      color: #c084fc;
+      font-weight: 700;
+      font-family: monospace;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+    }
+    .cli-input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: #f8fafc;
+      font-family: monospace;
+      font-size: 13px;
+    }
+    .cli-send-btn {
+      background: #8b5cf6;
+      border: none;
+      color: white;
+      padding: 4px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    /* 模块知识卡片 */
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+    }
+    .info-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      transition: all 0.3s ease;
+    }
+    .info-card:hover {
+      border-color: #334155;
+      transform: translateY(-2px);
+    }
+    .card-tag {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      width: fit-content;
+    }
+    .tag-blue { background: rgba(56, 189, 248, 0.15); color: #38bdf8; }
+    .tag-green { background: rgba(16, 185, 129, 0.15); color: #10b981; }
+    .tag-purple { background: rgba(139, 92, 246, 0.15); color: #c084fc; }
+    .tag-cyan { background: rgba(6, 182, 212, 0.15); color: #06b6d4; }
+    .card-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #f8fafc;
+    }
+    .card-desc {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+    .code-pill {
+      background: #0f172a;
+      border: 1px solid #1e293b;
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-family: monospace;
+      font-size: 11px;
+      color: #cbd5e1;
+    }
+
+    footer {
+      text-align: center;
+      padding: 24px 0;
+      font-size: 13px;
+      color: #64748b;
+      border-top: 1px solid #1e293b;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <!-- 顶部标题 -->
+    <header>
+      <div class="badge">PHASE 2 架构设计与数据流向</div>
+      <h1>C 语言串口全双工守护进程架构蓝图</h1>
+      <p>解耦设计核心：7x24小时毫秒级存盘与远程工程师随时接入双向交互零冲突、单线程 poll() 全异步零死锁</p>
+    </header>
+
+    <!-- 交互模拟器顶栏 -->
+    <div class="simulator-panel">
+      <div class="sim-header">
+        <div class="sim-title">
+          <div class="dot"></div>
+          <span>动态数据流交互演示器 (点击下方按钮，观察架构图中的数据分流与两屏反应)</span>
+        </div>
+        <div class="btn-group">
+          <button class="btn btn-dut" onclick="simulateDutOutput('sensor_ok')">
+            ⚡ 模拟目标板输出 (DUT TX)
+          </button>
+          <button class="btn btn-dut" onclick="simulateDutOutput('kernel_panic')">
+            ⚠️ 模拟设备产生故障 Log
+          </button>
+          <button class="btn btn-eng" onclick="simulateEngineerInput('help')">
+            ⌨️ 模拟工程师下发 "help" 指令
+          </button>
+          <button class="btn btn-reset" onclick="clearTerminalLogs()">
+            🧹 清空演示屏幕
+          </button>
+        </div>
+      </div>
+
+      <!-- 核心全景架构图 -->
+      <div class="arch-canvas">
+        <div class="diagram-grid">
+
+          <!-- 1. 目标板 DUT -->
+          <div class="node-box dut-node" id="node-dut">
+            <div class="node-title">【被监控目标板 (DUT)】</div>
+            <div class="node-desc">嵌入式 Linux / 单片机 (TX / RX / GND)</div>
+          </div>
+
+          <!-- 物理链路 -->
+          <div class="flow-arrow" id="arrow-uart">
+            <span class="arrow-icon">▼▲</span>
+            <span>硬件 TTL 物理电平 (默认 115200 8N1)</span>
+          </div>
+
+          <!-- 2. USB 转 TTL 串口适配器 -->
+          <div class="node-box adapter-node" id="node-adapter">
+            <div class="node-title">【USB 转 TTL 串口适配器】</div>
+            <div class="node-desc">udev 规则永久锁定为 /dev/target_uart (防热插拔漂移)</div>
+          </div>
+
+          <!-- 进入树莓派守护进程 -->
+          <div class="flow-arrow" id="arrow-dev">
+            <span class="arrow-icon">▼▲</span>
+            <span>POSIX termios RAW 原始模式描述符 (serial_fd)</span>
+          </div>
+
+          <!-- 3. C 语言主守护进程外框 -->
+          <div class="daemon-container" id="node-daemon">
+            <div class="daemon-badge">debugbox_serial_daemon (纯 C 语言，约 1.5MB 内存)</div>
+
+            <!-- poll() 事件循环核心 -->
+            <div class="poll-core" id="core-poll">
+              <div class="node-title" style="color: #22d3ee;">Linux 原生 poll() 单线程全异步事件驱动核心</div>
+              <div class="node-desc" style="color: #94a3b8;">
+                监听列表：[ serial_fd (串口) | listen_fd (UNIX Socket服务端) | client_fd (工程师连接) ]
+                <br>无需 pthread 互斥锁，零死锁风险，微秒级响应
+              </div>
+            </div>
+
+            <!-- 内部两大解耦子模块 -->
+            <div class="daemon-submodules">
+              
+              <!-- 分支 1：存盘 -->
+              <div class="submodule-card submodule-log" id="sub-log">
+                <div class="card-tag tag-green">数据分支 A (持续持久化)</div>
+                <div class="node-title" style="color: #34d399;">1. 毫秒时间戳与轮转存盘 (log_rotator)</div>
+                <div class="node-desc">
+                  • 组行缓冲：检测到 '\n' 或满 1KB 刷盘<br>
+                  • 纳秒时钟：格式化 [YYYY-MM-DD HH:MM:SS.mmm]<br>
+                  • 单文件超 20MB 自动换新文件，滚动保留 50 个
+                </div>
+              </div>
+
+              <!-- 分支 2：交互 -->
+              <div class="submodule-card submodule-hub" id="sub-hub">
+                <div class="card-tag tag-purple">数据分支 B (全双工交互)</div>
+                <div class="node-title" style="color: #c084fc;">2. UNIX Socket 终端中继端 (client_hub)</div>
+                <div class="node-desc">
+                  • 广播分发：串口有输出，原样转发给客户端终端<br>
+                  • 命令注入：客户端敲击键盘，直接 write(serial_fd)<br>
+                  • 会话解耦：工程师退出终端，完全不影响分支 A 存盘
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- 底层持久化输出与终端访问点 -->
+          <div class="output-endpoints">
+            
+            <div class="endpoint-card endpoint-log" id="end-log">
+              <div class="node-title">📁 本地持久化存储文件</div>
+              <div class="node-desc">/var/log/debugbox/serial_YYYYMMDD_HHMM.log</div>
+              <div class="node-desc" style="margin-top: 4px; color: #a7f3d0;">24小时不间断记录，断网断开终端依然忠实存盘</div>
+            </div>
+
+            <div class="endpoint-card endpoint-hub" id="end-hub">
+              <div class="node-title">🔌 本地 UNIX 套接字 (IPC)</div>
+              <div class="node-desc">/run/debugbox_serial.sock (0666)</div>
+              <div class="node-desc" style="margin-top: 4px; color: #ddd6fe;">终端执行 <code>debug-console</code> 随时无感接入</div>
+            </div>
+
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- 实时双屏模拟演示器 -->
+    <div class="terminals-grid">
+      
+      <!-- 终端屏幕 1：本地日志文件实时 tail 视图 -->
+      <div class="terminal-window">
+        <div class="terminal-titlebar">
+          <div class="window-dots">
+            <span class="dot-r"></span>
+            <span class="dot-y"></span>
+            <span class="dot-g"></span>
+          </div>
+          <div class="terminal-title">本地磁盘日志文件实时滚动 (/var/log/debugbox/serial_*.log)</div>
+          <span style="font-size: 11px; color: #10b981; font-weight: 700;">● 持续存盘中</span>
+        </div>
+        <div class="terminal-body" id="disk-log-body">
+          <div class="log-line"><span class="log-ts">[2026-10-09 07:50:00.001]</span> <span class="log-sys">[SYSTEM]</span> debugbox_serial_daemon started. Baud=115200</div>
+          <div class="log-line"><span class="log-ts">[2026-10-09 07:50:00.005]</span> <span class="log-sys">[SYSTEM]</span> UDEV port /dev/target_uart opened successfully.</div>
+          <div class="log-line"><span class="log-ts">[2026-10-09 07:50:01.120]</span> <span class="log-dut">[DUT]</span> systemd[1]: Reached target Basic System.</div>
+          <div class="log-line"><span class="log-ts">[2026-10-09 07:50:01.450]</span> <span class="log-dut">[DUT]</span> app_main: initialization complete. Listening on 0.0.0.0:8080</div>
+        </div>
+      </div>
+
+      <!-- 终端屏幕 2：工程师终端 debug-console 实时交互视图 -->
+      <div class="terminal-window">
+        <div class="terminal-titlebar">
+          <div class="window-dots">
+            <span class="dot-r"></span>
+            <span class="dot-y"></span>
+            <span class="dot-g"></span>
+          </div>
+          <div class="terminal-title">远程工程师调试控制台 ($ debug-console)</div>
+          <span style="font-size: 11px; color: #c084fc; font-weight: 700;">● 交互式会话</span>
+        </div>
+        <div class="terminal-body" id="engineer-console-body">
+          <div class="log-line" style="color: #94a3b8;">=== DebugBox Interactive Serial Console ===</div>
+          <div class="log-line" style="color: #94a3b8;">Connected to /run/debugbox_serial.sock. Press Ctrl+] to detach.</div>
+          <div class="log-line" style="color: #cbd5e1;">systemd[1]: Reached target Basic System.</div>
+          <div class="log-line" style="color: #cbd5e1;">app_main: initialization complete. Listening on 0.0.0.0:8080</div>
+        </div>
+        <div class="cli-input-bar">
+          <span class="cli-prompt">DUT&gt;&nbsp;</span>
+          <input type="text" id="cli-input-box" class="cli-input" placeholder="输入命令，如 ls / reboot / status..." onkeydown="if(event.key==='Enter') sendCustomCommand()">
+          <button class="cli-send-btn" onclick="sendCustomCommand()">发送指令</button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- 四大核心技术深度解析卡片 -->
+    <div class="cards-grid">
+      
+      <div class="info-card">
+        <div class="card-tag tag-cyan">核心决策 1</div>
+        <div class="card-title">为什么推荐单线程 poll()？</div>
+        <div class="card-desc">
+          多线程（线程A读串口、线程B管Socket）在 C 语言中容易产生竞态条件，需要引入互斥锁（Mutex）与环形缓冲队列。而 Linux 核心的 <code>poll()</code> 能将串口和 Socket 统一看作事件源，单线程事件驱动，<strong>彻底避免死锁，代码逻辑像线性脚本一样直观</strong>。
+        </div>
+        <div class="code-pill">poll(&poll_fds, nfds, timeout_ms);</div>
+      </div>
+
+      <div class="info-card">
+        <div class="card-tag tag-blue">核心决策 2</div>
+        <div class="card-title">&lt;termios.h&gt; RAW 原始模式</div>
+        <div class="card-desc">
+          Linux 默认对串口启用“终端处理模式”（会自动吃掉回车符、转换换行、拦截 Ctrl+C）。我们在 C 中将其设置为纯 <strong>RAW 模式</strong>（关闭 ECHO、ICANON、ISIG 等），确保单板发出来的十六进制数据、回车和转义序列 100% 原汁原味。
+        </div>
+        <div class="code-pill">cfmakeraw(&tio); cfsetspeed(&tio, B115200);</div>
+      </div>
+
+      <div class="info-card">
+        <div class="card-tag tag-green">核心决策 3</div>
+        <div class="card-title">毫秒时间戳与防爆卡保护</div>
+        <div class="card-desc">
+          使用高精度的 <code>clock_gettime(CLOCK_REALTIME)</code> 获取毫秒。为保护 SD 卡寿命，采用内存按行批次刷盘机制。当文件达到 <strong>20MB</strong> 阈值时自动轮转切割并压缩，磁盘最多保留 50 个最新切片（约 1GB），超限自动清除最老日志。
+        </div>
+        <div class="code-pill">snprintf(buf, len, "[%04d-%02d-%02d %02d:%02d:%02d.%03ld] ...")</div>
+      </div>
+
+      <div class="info-card">
+        <div class="card-tag tag-purple">核心决策 4</div>
+        <div class="card-title">UNIX Socket (AF_UNIX) 优势</div>
+        <div class="card-desc">
+          比起网络端口（如 127.0.0.1:8888），本地套接字 <code>/run/debugbox_serial.sock</code> 纯走内核内存零网络栈开销，延迟低于 10 微秒；且依赖 Linux 标准文件权限（0666）保护，<strong>外网绝对无法越权扫描该端口，具备天生工业级安全</strong>。
+        </div>
+        <div class="code-pill">socket(AF_UNIX, SOCK_STREAM, 0);</div>
+      </div>
+
+    </div>
+
+    <!-- 底部版权 -->
+    <footer>
+      工业便携式远程调试伴侣盒 (Raspberry Pi 4B) • 阶段二架构设计规范 • 纯 C 语言高性能实现
+    </footer>
+
+  </div>
+
+  <script>
+    // 时间戳格式化工具
+    function getNowFormatted() {
+      const now = new Date();
+      const pad = (n, s=2) => String(n).padStart(s, '0');
+      const y = now.getFullYear();
+      const m = pad(now.getMonth() + 1);
+      const d = pad(now.getDate());
+      const hh = pad(now.getHours());
+      const mm = pad(now.getMinutes());
+      const ss = pad(now.getSeconds());
+      const ms = pad(now.getMilliseconds(), 3);
+      return `[${y}-${m}-${d} ${hh}:${mm}:${ss}.${ms}]`;
+    }
+
+    // 动画高亮节点
+    function highlightPipeline(isDutFlow) {
+      const poll = document.getElementById('core-poll');
+      const subLog = document.getElementById('sub-log');
+      const subHub = document.getElementById('sub-hub');
+      
+      poll.classList.add('pulse');
+      subLog.classList.add('active-branch');
+      subHub.classList.add('active-branch');
+
+      setTimeout(() => {
+        poll.classList.remove('pulse');
+        subLog.classList.remove('active-branch');
+        subHub.classList.remove('active-branch');
+      }, 700);
+    }
+
+    // 模拟目标板输出
+    function simulateDutOutput(type) {
+      highlightPipeline(true);
+      const diskBody = document.getElementById('disk-log-body');
+      const consoleBody = document.getElementById('engineer-console-body');
+      const ts = getNowFormatted();
+
+      let text = '';
+      if (type === 'sensor_ok') {
+        const temp = (25 + Math.random() * 5).toFixed(1);
+        const hum = (40 + Math.random() * 10).toFixed(1);
+        text = `sensor_worker: temperature=${temp}C, humidity=${hum}%, status=OK`;
+      } else if (type === 'kernel_panic') {
+        text = `WARNING: CPU0: hardirq took 1250us, watchdog timer timeout!`;
+      }
+
+      // 1. 写存盘日志 (带毫秒时间戳)
+      const diskRow = document.createElement('div');
+      diskRow.className = 'log-line';
+      diskRow.innerHTML = `<span class="log-ts">${ts}</span> <span class="log-dut">[DUT]</span> ${text}`;
+      diskBody.appendChild(diskRow);
+      diskBody.scrollTop = diskBody.scrollHeight;
+
+      // 2. 实时分发给工程师控制台 (保持原始终端输出)
+      const consRow = document.createElement('div');
+      consRow.className = 'log-line';
+      consRow.style.color = type === 'kernel_panic' ? '#f87171' : '#38bdf8';
+      consRow.textContent = text;
+      consoleBody.appendChild(consRow);
+      consoleBody.scrollTop = consoleBody.scrollHeight;
+    }
+
+    // 模拟工程师下发指令
+    function simulateEngineerInput(cmd) {
+      highlightPipeline(false);
+      const diskBody = document.getElementById('disk-log-body');
+      const consoleBody = document.getElementById('engineer-console-body');
+      const ts = getNowFormatted();
+
+      // 1. 工程师控制台回显
+      const consCmdRow = document.createElement('div');
+      consCmdRow.className = 'log-line';
+      consCmdRow.innerHTML = `<span style="color:#c084fc; font-weight:700;">DUT&gt;</span> <span style="color:#fff;">${cmd}</span>`;
+      consoleBody.appendChild(consCmdRow);
+
+      // 2. 磁盘日志同步记录工程师下发的指令 (打上 [INPUT] 标签供日后审计)
+      const diskRow = document.createElement('div');
+      diskRow.className = 'log-line';
+      diskRow.innerHTML = `<span class="log-ts">${ts}</span> <span class="log-input">[INPUT]</span> ${cmd}`;
+      diskBody.appendChild(diskRow);
+
+      // 3. 模拟单板稍后对该命令的回复
+      setTimeout(() => {
+        let reply = '';
+        if (cmd === 'help') {
+          reply = "Available commands: [status, get_temp, reboot, clear_cache]";
+        } else if (cmd === 'reboot') {
+          reply = "System is going down for reboot NOW!";
+        } else {
+          reply = `command '${cmd}' executed, return code 0`;
+        }
+
+        const replyTs = getNowFormatted();
+        const diskReply = document.createElement('div');
+        diskReply.className = 'log-line';
+        diskReply.innerHTML = `<span class="log-ts">${replyTs}</span> <span class="log-dut">[DUT]</span> ${reply}`;
+        diskBody.appendChild(diskReply);
+        diskBody.scrollTop = diskBody.scrollHeight;
+
+        const consReply = document.createElement('div');
+        consReply.className = 'log-line';
+        consReply.style.color = '#38bdf8';
+        consReply.textContent = reply;
+        consoleBody.appendChild(consReply);
+        consoleBody.scrollTop = consoleBody.scrollHeight;
+      }, 350);
+
+      diskBody.scrollTop = diskBody.scrollHeight;
+      consoleBody.scrollTop = consoleBody.scrollHeight;
+    }
+
+    function sendCustomCommand() {
+      const input = document.getElementById('cli-input-box');
+      const val = input.value.trim();
+      if (!val) return;
+      simulateEngineerInput(val);
+      input.value = '';
+    }
+
+    function clearTerminalLogs() {
+      document.getElementById('disk-log-body').innerHTML = '<div class="log-line" style="color:#64748b;">(日志屏幕已清空，后台真实文件仍完整保留)</div>';
+      document.getElementById('engineer-console-body').innerHTML = '<div class="log-line" style="color:#64748b;">(控制台会话已清屏)</div>';
+    }
+  </script>
+</body>
+</html>
