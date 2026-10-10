@@ -1,0 +1,16 @@
+[Unit]
+Description=DebugBox C-Language Serial Logging & Interactive Console Hub
+After=local-fs.target
+Wants=local-fs.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/local/bin/debugbox_serial_daemon --device /dev/target_uart --baud 115200 --log-dir /var/log/debugbox --sock /run/debugbox_serial.sock --max-size 20 --max-files 50
+Restart=always
+RestartSec=2s
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

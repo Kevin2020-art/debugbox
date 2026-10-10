@@ -83,73 +83,93 @@ apt-get install -y --no-install-recommends \
   python3-yaml \
   rsync
 
-# 2. 编译并安装 C 硬件守护程序
-echo ">>> [2/6] 编译并全局安装 C 语言硬件控制器..."
+# 2. 编译并安装 C 硬件守护程序与串口服务
+echo ">>> [2/7] 编译并全局安装 C 语言硬件控制器与串口守护进程..."
 cd "${SCRIPT_DIR}/src/c_gpio"
 make clean
 make
 make install
+
+cd "${SCRIPT_DIR}/src/c_serial"
+make clean
+make
+make install
+
 # 验证二进制
-if [ ! -f /usr/local/bin/debugbox_gpio_daemon ]; then
-  echo "❌ 编译失败: 未找到 /usr/local/bin/debugbox_gpio_daemon"
+if [ ! -f /usr/local/bin/debugbox_gpio_daemon ] || [ ! -f /usr/local/bin/debugbox_serial_daemon ] || [ ! -f /usr/local/bin/debug-console ]; then
+  echo "❌ 编译失败: 未找到必需的 C 二进制可执行文件"
   exit 1
 fi
-echo "✓ C 二进制已成功安装至 /usr/local/bin/debugbox_gpio_daemon 与 /usr/local/bin/gpio_ctl"
+echo "✓ C 二进制已成功安装至 /usr/local/bin/ (gpio_daemon, gpio_ctl, serial_daemon, debug-console)"
 
-# 3. 部署生产文件至 /opt/debugbox
-echo ">>> [3/6] 同步代码至生产目录 ${INSTALL_DIR}..."
+# 3. 部署生产文件至 /opt/debugbox 与创建日志目录
+echo ">>> [3/7] 同步代码至生产目录 ${INSTALL_DIR} 与准备日志目录..."
 mkdir -p "${INSTALL_DIR}"
 mkdir -p "${INSTALL_DIR}/config"
 mkdir -p "${INSTALL_DIR}/scripts"
 mkdir -p "${INSTALL_DIR}/src"
+mkdir -p /var/log/debugbox
+chmod 755 /var/log/debugbox
 
 cp -r "${SCRIPT_DIR}/config/"* "${INSTALL_DIR}/config/"
 cp -r "${SCRIPT_DIR}/scripts/"* "${INSTALL_DIR}/scripts/"
 cp -r "${SCRIPT_DIR}/src/"* "${INSTALL_DIR}/src/"
 
 chmod +x "${INSTALL_DIR}/scripts/"*.sh
-echo "✓ 生产目录同步完成"
+echo "✓ 生产目录与日志目录准备完成"
 
-# 4. 配置 NetworkManager Captive Portal DNS 劫持规则
-echo ">>> [4/6] 配置 Wi-Fi 强制弹窗 (Captive Portal) 通配 DNS 规则..."
+# 4. 配置 UDEV 固化串口规则
+echo ">>> [4/7] 安装 UDEV 串口固化规则 (/dev/target_uart)..."
+cp "${INSTALL_DIR}/config/99-target-serial.rules" /etc/udev/rules.d/
+udevadm control --reload-rules || true
+udevadm trigger || true
+echo "✓ UDEV 规则已加载生效"
+
+# 5. 配置 NetworkManager Captive Portal DNS 劫持规则
+echo ">>> [5/7] 配置 Wi-Fi 强制弹窗 (Captive Portal) 通配 DNS 规则..."
 mkdir -p /etc/NetworkManager/dnsmasq-shared.d
 cp "${INSTALL_DIR}/config/00-captive-portal.conf" /etc/NetworkManager/dnsmasq-shared.d/
 chmod 644 /etc/NetworkManager/dnsmasq-shared.d/00-captive-portal.conf
 systemctl reload NetworkManager || true
 echo "✓ DNS 泛解析规则配置生效 (address=/#/192.168.4.1)"
 
-# 5. 安装并注册 systemd 服务
-echo ">>> [5/6] 注册并启动 systemd 开机自启服务..."
+# 6. 安装并注册 systemd 服务
+echo ">>> [6/7] 注册并启动 systemd 开机自启服务..."
 cp "${INSTALL_DIR}/config/systemd/debugbox-gpio.service" /etc/systemd/system/
 cp "${INSTALL_DIR}/config/systemd/debugbox-network.service" /etc/systemd/system/
-chmod 644 /etc/systemd/system/debugbox-gpio.service
-chmod 644 /etc/systemd/system/debugbox-network.service
+cp "${INSTALL_DIR}/config/systemd/debugbox-serial.service" /etc/systemd/system/
+chmod 644 /etc/systemd/system/debugbox-*.service
 
 systemctl daemon-reload
 systemctl enable debugbox-gpio.service
 systemctl enable debugbox-network.service
+systemctl enable debugbox-serial.service
 
 # 重启服务以应用最新代码
 systemctl restart debugbox-gpio.service
 sleep 1
 systemctl restart debugbox-network.service
+sleep 1
+systemctl restart debugbox-serial.service
 sleep 2
 
-# 6. 状态健康检查
-echo ">>> [6/6] 验证服务运行状态..."
+# 7. 状态健康检查
+echo ">>> [7/7] 验证服务运行状态..."
 GPIO_STATUS=$(systemctl is-active debugbox-gpio.service || true)
 NET_STATUS=$(systemctl is-active debugbox-network.service || true)
+SERIAL_STATUS=$(systemctl is-active debugbox-serial.service || true)
 
 echo "  - debugbox-gpio.service:    ${GPIO_STATUS}"
 echo "  - debugbox-network.service: ${NET_STATUS}"
+echo "  - debugbox-serial.service:  ${SERIAL_STATUS}"
 
-if [ "${GPIO_STATUS}" = "active" ] && [ "${NET_STATUS}" = "active" ]; then
+if [ "${GPIO_STATUS}" = "active" ] && [ "${NET_STATUS}" = "active" ] && [ "${SERIAL_STATUS}" = "active" ]; then
   echo "=================================================================="
-  echo "🎉 部署成功！所有服务已在后台健康运行并配置开机自启。"
-  echo "  - C 语言硬件 IPC Socket: /run/debugbox_gpio.sock"
-  echo "  - 测试 LED 控制:         gpio_ctl LED ONLINE"
-  echo "  - 查看网络服务日志:       journalctl -u debugbox-network.service -f"
-  echo "  - 查看按键硬件日志:       journalctl -u debugbox-gpio.service -f"
+  echo "🎉 部署成功！第一阶段与第二阶段所有服务均在后台健康运行！"
+  echo "  - 硬件按键与 LED:   /run/debugbox_gpio.sock (gpio_ctl 调试)"
+  echo "  - 串口 24h 存盘日志: /var/log/debugbox/serial_*.log"
+  echo "  - 工程师双向控制台: 直接运行 debug-console 即可接入 (Ctrl+] 退出)"
+  echo "  - 查看串口服务日志: journalctl -u debugbox-serial.service -f"
   echo "=================================================================="
 else
   echo "⚠️ 警告: 部分服务状态异常，请运行 journalctl -xe 查看报错信息。"

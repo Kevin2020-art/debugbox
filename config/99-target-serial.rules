@@ -1,0 +1,21 @@
+# ==============================================================================
+# DebugBox 串口固化 UDEV 规则 (固定映射为 /dev/target_uart)
+#
+# 作用：
+#   无论 USB 转 TTL 模块插在哪个 USB 接口、无论如何反复热插拔，
+#   系统均会自动建立软链接 /dev/target_uart -> /dev/ttyUSBx，
+#   确保后台 C 守护进程与应用程序永远不需要修改串口路径！
+# ==============================================================================
+
+# 通用规则：默认将首个插入的 USB 转串口设备 (ttyUSB* 或 ttyACM*) 映射为 target_uart
+SUBSYSTEM=="tty", KERNEL=="ttyUSB*", SYMLINK+="target_uart", MODE="0666"
+SUBSYSTEM=="tty", KERNEL=="ttyACM*", SYMLINK+="target_uart", MODE="0666"
+
+# 进阶定制示例 (若同时插入多个 USB 串口，可通过 VID/PID 精准锁定目标):
+# 常见芯片 VID/PID:
+#   - CP2102: ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60"
+#   - CH340:  ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523"
+#   - FT232:  ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6001"
+#
+# 例如精准匹配 CP2102:
+# SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", SYMLINK+="target_uart", MODE="0666"
