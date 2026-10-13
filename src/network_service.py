@@ -62,7 +62,9 @@ def load_config():
                 "ap_ip": wf.get("ap_ip", defaults["ap_ip"]),
                 "portal_port": wf.get("portal_port", defaults["portal_port"]),
                 "connect_timeout": wf.get("connect_timeout", defaults["connect_timeout"]),
-                "status_check_interval": sys_cfg.get("status_check_interval", defaults["status_check_interval"])
+                "status_check_interval": sys_cfg.get("status_check_interval", defaults["status_check_interval"]),
+                "easytier_enabled": data.get("easytier", {}).get("enabled", False),
+                "easytier_ip": data.get("easytier", {}).get("ipv4", "10.144.144.2")
             }
     except Exception as e:
         logger.warning(f"解析 config.yaml 异常 ({e})，使用默认参数运行")
@@ -199,13 +201,28 @@ class NetworkSupervisor:
                         consecutive_lost_count = 0
                 else:
                     consecutive_lost_count = 0
-                    if self.gpio.current_state != LEDState.ONLINE:
+                    # 若配置了 EasyTier，需等待异地加密隧道就绪才进入 ONLINE 心跳双闪
+                    if self.is_tunnel_online():
                         self.set_led_state(LEDState.ONLINE)
+                    else:
+                        self.set_led_state(LEDState.CONNECTING)
 
         except KeyboardInterrupt:
             logger.info("收到退出信号，正在关闭服务...")
         finally:
             self.stop()
+
+    def is_tunnel_online(self) -> bool:
+        """检查 EasyTier 虚拟隧道是否就绪"""
+        if not self.config.get("easytier_enabled", False):
+            return True
+        try:
+            import subprocess
+            target_ip = self.config.get("easytier_ip", "10.144.144.2")
+            res = subprocess.run(["ip", "addr", "show"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=2)
+            return target_ip in res.stdout
+        except Exception:
+            return False
 
     def stop(self):
         self.running = False

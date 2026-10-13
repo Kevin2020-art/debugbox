@@ -18,3 +18,10 @@ wifi:
 system:
   log_dir: "/var/log/debugbox"
   status_check_interval: 5   # 网络状态轮询间隔 (秒)
+
+easytier:
+  enabled: true
+  network_name: "debugbox_mesh"
+  network_secret: "debugbox_pass_2026"
+  ipv4: "10.144.144.2"       # 树莓派虚拟内网 IP
+  peer_node: "tcp://public.easytier.top:11010"

@@ -83,7 +83,7 @@ apt-get install -y --no-install-recommends \
   python3-yaml \
   rsync
 
-# 2. 编译并安装 C 硬件守护程序与串口服务
+# 2. 编译并安装 C 硬件守护程序与串口服务、安装 EasyTier
 echo ">>> [2/7] 编译并全局安装 C 语言硬件控制器与串口守护进程..."
 cd "${SCRIPT_DIR}/src/c_gpio"
 make clean
@@ -95,12 +95,21 @@ make clean
 make
 make install
 
+# 自动检查并安装 EasyTier
+if [ ! -f /usr/local/bin/easytier-core ]; then
+  echo ">>> [EasyTier] 下载并安装 EasyTier P2P 组网工具 (v2.6.4 aarch64)..."
+  curl -L -o /tmp/easytier.zip https://github.com/EasyTier/EasyTier/releases/download/v2.6.4/easytier-linux-aarch64-v2.6.4.zip
+  unzip -o /tmp/easytier.zip -d /tmp/
+  cp /tmp/easytier-linux-aarch64/easytier-core /tmp/easytier-linux-aarch64/easytier-cli /usr/local/bin/
+  chmod +x /usr/local/bin/easytier-*
+fi
+
 # 验证二进制
-if [ ! -f /usr/local/bin/debugbox_gpio_daemon ] || [ ! -f /usr/local/bin/debugbox_serial_daemon ] || [ ! -f /usr/local/bin/debug-console ]; then
-  echo "❌ 编译失败: 未找到必需的 C 二进制可执行文件"
+if [ ! -f /usr/local/bin/debugbox_gpio_daemon ] || [ ! -f /usr/local/bin/debugbox_serial_daemon ] || [ ! -f /usr/local/bin/debug-console ] || [ ! -f /usr/local/bin/easytier-core ]; then
+  echo "❌ 编译/安装失败: 未找到必需的可执行文件"
   exit 1
 fi
-echo "✓ C 二进制已成功安装至 /usr/local/bin/ (gpio_daemon, gpio_ctl, serial_daemon, debug-console)"
+echo "✓ 必需可执行文件已全部就绪 (/usr/local/bin/)"
 
 # 3. 部署生产文件至 /opt/debugbox 与创建日志目录
 echo ">>> [3/7] 同步代码至生产目录 ${INSTALL_DIR} 与准备日志目录..."
@@ -138,12 +147,14 @@ echo ">>> [6/7] 注册并启动 systemd 开机自启服务..."
 cp "${INSTALL_DIR}/config/systemd/debugbox-gpio.service" /etc/systemd/system/
 cp "${INSTALL_DIR}/config/systemd/debugbox-network.service" /etc/systemd/system/
 cp "${INSTALL_DIR}/config/systemd/debugbox-serial.service" /etc/systemd/system/
+cp "${INSTALL_DIR}/config/systemd/debugbox-easytier.service" /etc/systemd/system/
 chmod 644 /etc/systemd/system/debugbox-*.service
 
 systemctl daemon-reload
 systemctl enable debugbox-gpio.service
 systemctl enable debugbox-network.service
 systemctl enable debugbox-serial.service
+systemctl enable debugbox-easytier.service
 
 # 重启服务以应用最新代码
 systemctl restart debugbox-gpio.service
@@ -151,6 +162,8 @@ sleep 1
 systemctl restart debugbox-network.service
 sleep 1
 systemctl restart debugbox-serial.service
+sleep 1
+systemctl restart debugbox-easytier.service
 sleep 2
 
 # 7. 状态健康检查
@@ -158,18 +171,20 @@ echo ">>> [7/7] 验证服务运行状态..."
 GPIO_STATUS=$(systemctl is-active debugbox-gpio.service || true)
 NET_STATUS=$(systemctl is-active debugbox-network.service || true)
 SERIAL_STATUS=$(systemctl is-active debugbox-serial.service || true)
+EASYTIER_STATUS=$(systemctl is-active debugbox-easytier.service || true)
 
-echo "  - debugbox-gpio.service:    ${GPIO_STATUS}"
-echo "  - debugbox-network.service: ${NET_STATUS}"
-echo "  - debugbox-serial.service:  ${SERIAL_STATUS}"
+echo "  - debugbox-gpio.service:     ${GPIO_STATUS}"
+echo "  - debugbox-network.service:  ${NET_STATUS}"
+echo "  - debugbox-serial.service:   ${SERIAL_STATUS}"
+echo "  - debugbox-easytier.service: ${EASYTIER_STATUS}"
 
-if [ "${GPIO_STATUS}" = "active" ] && [ "${NET_STATUS}" = "active" ] && [ "${SERIAL_STATUS}" = "active" ]; then
+if [ "${GPIO_STATUS}" = "active" ] && [ "${NET_STATUS}" = "active" ] && [ "${SERIAL_STATUS}" = "active" ] && [ "${EASYTIER_STATUS}" = "active" ]; then
   echo "=================================================================="
-  echo "🎉 部署成功！第一阶段与第二阶段所有服务均在后台健康运行！"
-  echo "  - 硬件按键与 LED:   /run/debugbox_gpio.sock (gpio_ctl 调试)"
-  echo "  - 串口 24h 存盘日志: /var/log/debugbox/serial_*.log"
-  echo "  - 工程师双向控制台: 直接运行 debug-console 即可接入 (Ctrl+] 退出)"
-  echo "  - 查看串口服务日志: journalctl -u debugbox-serial.service -f"
+  echo "🎉 部署成功！全系统四大核心服务均在后台健康运行并配置开机自启！"
+  echo "  - 硬件按键与 LED:    /run/debugbox_gpio.sock (gpio_ctl 调试)"
+  echo "  - 串口 24h 存盘日志:  /var/log/debugbox/serial_*.log"
+  echo "  - 工程师双向控制台:  debug-console (随时无感接入，Ctrl+] 退出)"
+  echo "  - 异地 P2P 穿透网卡: 10.144.144.2 (EasyTier 虚拟内网)"
   echo "=================================================================="
 else
   echo "⚠️ 警告: 部分服务状态异常，请运行 journalctl -xe 查看报错信息。"
