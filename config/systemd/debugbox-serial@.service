@@ -1,0 +1,16 @@
+[Unit]
+Description=DebugBox C-Language Serial Logging & Interactive Hub for Channel %i
+After=local-fs.target
+Wants=local-fs.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/local/bin/debugbox_serial_daemon -c %i
+Restart=always
+RestartSec=2s
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

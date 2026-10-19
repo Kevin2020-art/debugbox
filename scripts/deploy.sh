@@ -147,8 +147,9 @@ echo ">>> [6/7] 注册并启动 systemd 开机自启服务..."
 cp "${INSTALL_DIR}/config/systemd/debugbox-gpio.service" /etc/systemd/system/
 cp "${INSTALL_DIR}/config/systemd/debugbox-network.service" /etc/systemd/system/
 cp "${INSTALL_DIR}/config/systemd/debugbox-serial.service" /etc/systemd/system/
+cp "${INSTALL_DIR}/config/systemd/debugbox-serial@.service" /etc/systemd/system/
 cp "${INSTALL_DIR}/config/systemd/debugbox-easytier.service" /etc/systemd/system/
-chmod 644 /etc/systemd/system/debugbox-*.service
+chmod 644 /etc/systemd/system/debugbox-*.service /etc/systemd/system/debugbox-serial@.service 2>/dev/null || true
 
 systemctl daemon-reload
 systemctl enable debugbox-gpio.service
@@ -183,7 +184,8 @@ if [ "${GPIO_STATUS}" = "active" ] && [ "${NET_STATUS}" = "active" ] && [ "${SER
   echo "🎉 部署成功！全系统四大核心服务均在后台健康运行并配置开机自启！"
   echo "  - 硬件按键与 LED:    /run/debugbox_gpio.sock (gpio_ctl 调试)"
   echo "  - 串口 24h 存盘日志:  /var/log/debugbox/serial_*.log"
-  echo "  - 工程师双向控制台:  debug-console (随时无感接入，Ctrl+] 退出)"
+  echo "  - 工程师双向控制台:  debug-console (支持: debug-console uart1 / uart2)"
+  echo "  - 扩展多串口服务:    sudo systemctl enable --now debugbox-serial@uart2.service"
   echo "  - 异地 P2P 穿透网卡: 10.144.144.2 (EasyTier 虚拟内网)"
   echo "=================================================================="
 else

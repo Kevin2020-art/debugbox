@@ -17,6 +17,7 @@
 #include <poll.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <dirent.h>
 #include <errno.h>
 
 static struct termios g_orig_tio;
@@ -36,16 +37,132 @@ static void handle_exit_signal(int sig) {
     exit(0);
 }
 
-int main(int argc, char *argv[]) {
-    const char *socket_path = "/run/debugbox_serial.sock";
-    if (argc > 1 && (strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0)) {
-        printf("用法: %s [UNIX Socket 路径]\n", argv[0]);
-        printf("默认路径: /run/debugbox_serial.sock\n");
-        printf("提示: 在会话中按下快捷键 Ctrl + ] 即可安全退出\n");
-        return 0;
+static void print_usage(const char *prog) {
+    printf("用法: %s [通道名|Socket路径|选项]\n", prog);
+    printf("示例:\n");
+    printf("  %s                  # 自动连接当前可用串口 (或默认 uart1)\n", prog);
+    printf("  %s uart1            # 连接 1 号串口通道 (/run/debugbox_uart1.sock)\n", prog);
+    printf("  %s uart2            # 连接 2 号串口通道 (/run/debugbox_uart2.sock)\n", prog);
+    printf("  %s 1                # 数字简写，等同于 uart1\n", prog);
+    printf("  %s /run/my.sock     # 连接指定 UNIX Domain Socket 路径\n", prog);
+    printf("选项:\n");
+    printf("  -l, --list, list    列出当前系统中正在运行的所有串口控制台通道\n");
+    printf("  -h, --help          显示帮助信息\n");
+    printf("提示: 接入会话后按下快捷键 Ctrl + ] 即可随时安全退出\n");
+}
+
+/**
+ * 扫描 /run 目录列出所有正在运行的 debugbox 串口套接字
+ * 返回找到的有效套接字数量
+ */
+static int scan_active_channels(char channels[][64], char socket_paths[][128], int max_count) {
+    DIR *dir = opendir("/run");
+    if (!dir) return 0;
+
+    int count = 0;
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (strncmp(entry->d_name, "debugbox_", 9) == 0) {
+            size_t len = strlen(entry->d_name);
+            if (len > 5 && strcmp(entry->d_name + len - 5, ".sock") == 0) {
+                if (count < max_count) {
+                    snprintf(socket_paths[count], 128, "/run/%s", entry->d_name);
+                    /* 提取通道名: 去除前缀 debugbox_ 与后缀 .sock */
+                    size_t ch_len = len - 9 - 5;
+                    if (ch_len > 0 && ch_len < 63) {
+                        strncpy(channels[count], entry->d_name + 9, ch_len);
+                        channels[count][ch_len] = '\0';
+                    } else {
+                        snprintf(channels[count], sizeof(channels[count]), "%s", entry->d_name);
+                    }
+                    count++;
+                }
+            }
+        }
     }
+    closedir(dir);
+    return count;
+}
+
+static void show_active_channels(void) {
+    char channels[16][64];
+    char paths[16][128];
+    int count = scan_active_channels(channels, paths, 16);
+
+    printf("==================================================================\n");
+    printf(">>> 当前系统在线的 DebugBox 串口通道列表\n");
+    printf("==================================================================\n");
+    if (count == 0) {
+        printf("⚠️  当前未检测到任何正在运行的串口服务。\n");
+        printf("   请先启动服务: sudo systemctl start debugbox-serial@uart1.service\n");
+    } else {
+        for (int i = 0; i < count; i++) {
+            printf("  [%d] 通道名: %-10s  (套接字: %s)\n", i + 1, channels[i], paths[i]);
+            printf("      接入命令: debug-console %s\n", channels[i]);
+        }
+    }
+    printf("==================================================================\n");
+}
+
+int main(int argc, char *argv[]) {
+    char socket_path[128] = "";
+    char display_name[64] = "default";
+
     if (argc > 1) {
-        socket_path = argv[1];
+        if (strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0) {
+            print_usage(argv[0]);
+            return 0;
+        }
+        if (strcmp(argv[1], "-l") == 0 || strcmp(argv[1], "--list") == 0 || strcmp(argv[1], "list") == 0) {
+            show_active_channels();
+            return 0;
+        }
+
+        const char *arg = argv[1];
+        if (arg[0] == '/') {
+            /* 绝对路径 */
+            snprintf(socket_path, sizeof(socket_path), "%s", arg);
+            snprintf(display_name, sizeof(display_name), "%s", arg);
+        } else if (strncmp(arg, "uart", 4) == 0) {
+            /* 如: uart1, uart2 */
+            snprintf(socket_path, sizeof(socket_path), "/run/debugbox_%s.sock", arg);
+            snprintf(display_name, sizeof(display_name), "%s", arg);
+        } else if (arg[0] >= '0' && arg[0] <= '9') {
+            /* 纯数字简写: 1 -> uart1 */
+            snprintf(socket_path, sizeof(socket_path), "/run/debugbox_uart%s.sock", arg);
+            snprintf(display_name, sizeof(display_name), "uart%s", arg);
+        } else {
+            /* 自定义名称 */
+            snprintf(socket_path, sizeof(socket_path), "/run/debugbox_%s.sock", arg);
+            snprintf(display_name, sizeof(display_name), "%s", arg);
+        }
+    } else {
+        /* 未传参，按优先级自动探测 */
+        if (access("/run/debugbox_serial.sock", F_OK) == 0) {
+            snprintf(socket_path, sizeof(socket_path), "/run/debugbox_serial.sock");
+            snprintf(display_name, sizeof(display_name), "serial");
+        } else if (access("/run/debugbox_uart1.sock", F_OK) == 0) {
+            snprintf(socket_path, sizeof(socket_path), "/run/debugbox_uart1.sock");
+            snprintf(display_name, sizeof(display_name), "uart1");
+        } else {
+            /* 扫描是否有其他通道 */
+            char channels[16][64];
+            char paths[16][128];
+            int count = scan_active_channels(channels, paths, 16);
+            if (count == 1) {
+                /* 只有一个通道，直接连接该通道 */
+                snprintf(socket_path, sizeof(socket_path), "%s", paths[0]);
+                snprintf(display_name, sizeof(display_name), "%s", channels[0]);
+            } else if (count > 1) {
+                printf("\n⚠️  检测到系统中有多个串口通道在运行，请指定需要接入的通道：\n");
+                show_active_channels();
+                return 1;
+            } else {
+                /* 默认路径尝试 */
+                snprintf(socket_path, sizeof(socket_path), "/run/debugbox_serial.sock");
+                snprintf(display_name, sizeof(display_name), "default");
+            }
+        }
     }
 
     /* 1. 连接本地 UNIX 套接字 */
@@ -62,7 +179,8 @@ int main(int argc, char *argv[]) {
 
     if (connect(sock_fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
         fprintf(stderr, "\n❌ 无法连接到串口守护服务 (%s)\n", socket_path);
-        fprintf(stderr, "   请确认后台服务是否正常运行: sudo systemctl status debugbox-serial.service\n\n");
+        fprintf(stderr, "   请确认目标后台服务是否正常运行，例如: sudo systemctl status debugbox-serial@%s.service\n", display_name);
+        fprintf(stderr, "   运行 'debug-console --list' 可查看当前在线的通道。\n\n");
         close(sock_fd);
         return 1;
     }
@@ -79,6 +197,8 @@ int main(int argc, char *argv[]) {
         tcsetattr(STDIN_FILENO, TCSANOW, &raw);
         g_terminal_is_raw = 1;
     }
+
+    printf("\r\n=== Connected to DebugBox Serial Console [%s] (Press Ctrl+] to detach) ===\r\n\r\n", display_name);
 
     char buf[1024];
     struct pollfd fds[2];
@@ -137,6 +257,6 @@ int main(int argc, char *argv[]) {
     /* 5. 退出处理 */
     restore_terminal();
     close(sock_fd);
-    printf("\r\n[已安全退出 DebugBox 控制台，后台持续存盘未受影响]\r\n");
+    printf("\r\n[已安全退出 DebugBox [%s] 控制台，后台持续存盘未受影响]\r\n", display_name);
     return 0;
 }

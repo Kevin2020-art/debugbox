@@ -23,24 +23,27 @@ static void handle_signal(int sig) {
 static void print_usage(const char *prog) {
     printf("用法: %s [选项]\n", prog);
     printf("选项:\n");
-    printf("  -d, --device <路径>     串口设备路径 (默认: /dev/target_uart)\n");
+    printf("  -c, --channel <名称>    串口通道名称 (例如: uart1, 自动映射设备/日志/套接字路径)\n");
+    printf("  -d, --device <路径>     串口设备路径 (默认: /dev/target_uart 或 /dev/target_<通道>)\n");
     printf("  -b, --baud <波特率>     串口波特率 (默认: 115200)\n");
-    printf("  -l, --log-dir <目录>    日志存放目录 (默认: /var/log/debugbox)\n");
-    printf("  -s, --sock <路径>       UNIX Socket 路径 (默认: /run/debugbox_serial.sock)\n");
+    printf("  -l, --log-dir <目录>    日志存放目录 (默认: /var/log/debugbox 或 /var/log/debugbox/<通道>)\n");
+    printf("  -s, --sock <路径>       UNIX Socket 路径 (默认: /run/debugbox_serial.sock 或 /run/debugbox_<通道>.sock)\n");
     printf("  -m, --max-size <MB>     单文件最大大小 (默认: 20)\n");
     printf("  -n, --max-files <数量>  保留最多历史文件数 (默认: 50)\n");
     printf("  -h, --help              显示帮助信息\n");
 }
 
 int main(int argc, char *argv[]) {
-    char device_path[256] = "/dev/target_uart";
+    char channel_name[64] = "";
+    char device_path[256] = "";
     int baud_rate = 115200;
-    char log_dir[256] = "/var/log/debugbox";
-    char socket_path[108] = "/run/debugbox_serial.sock";
+    char log_dir[256] = "";
+    char socket_path[108] = "";
     int max_size_mb = 20;
     int max_files = 50;
 
     static struct option long_options[] = {
+        {"channel",   required_argument, 0, 'c'},
         {"device",    required_argument, 0, 'd'},
         {"baud",      required_argument, 0, 'b'},
         {"log-dir",   required_argument, 0, 'l'},
@@ -52,8 +55,9 @@ int main(int argc, char *argv[]) {
     };
 
     int opt;
-    while ((opt = getopt_long(argc, argv, "d:b:l:s:m:n:h", long_options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "c:d:b:l:s:m:n:h", long_options, NULL)) != -1) {
         switch (opt) {
+            case 'c': strncpy(channel_name, optarg, sizeof(channel_name) - 1); break;
             case 'd': strncpy(device_path, optarg, sizeof(device_path) - 1); break;
             case 'b': baud_rate = atoi(optarg); break;
             case 'l': strncpy(log_dir, optarg, sizeof(log_dir) - 1); break;
@@ -62,6 +66,29 @@ int main(int argc, char *argv[]) {
             case 'n': max_files = atoi(optarg); break;
             case 'h': print_usage(argv[0]); return 0;
             default:  print_usage(argv[0]); return 1;
+        }
+    }
+
+    /* 根据 channel_name 自动填充未显式指定的参数默认值 */
+    if (strlen(channel_name) > 0) {
+        if (strlen(device_path) == 0) {
+            snprintf(device_path, sizeof(device_path), "/dev/target_%s", channel_name);
+        }
+        if (strlen(log_dir) == 0) {
+            snprintf(log_dir, sizeof(log_dir), "/var/log/debugbox/%s", channel_name);
+        }
+        if (strlen(socket_path) == 0) {
+            snprintf(socket_path, sizeof(socket_path), "/run/debugbox_%s.sock", channel_name);
+        }
+    } else {
+        if (strlen(device_path) == 0) {
+            strncpy(device_path, "/dev/target_uart", sizeof(device_path) - 1);
+        }
+        if (strlen(log_dir) == 0) {
+            strncpy(log_dir, "/var/log/debugbox", sizeof(log_dir) - 1);
+        }
+        if (strlen(socket_path) == 0) {
+            strncpy(socket_path, "/run/debugbox_serial.sock", sizeof(socket_path) - 1);
         }
     }
 
