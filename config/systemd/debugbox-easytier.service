@@ -6,7 +6,7 @@ Wants=network.target
 [Service]
 Type=simple
 User=root
-ExecStart=/usr/local/bin/easytier-core --network-name debugbox_mesh --network-secret debugbox_pass_2026 --ipv4 10.144.144.2 -e tcp://public.easytier.top:11010 -r 127.0.0.1:15888
+ExecStart=/usr/local/bin/easytier-core --network-name debugbox_mesh --network-secret debugbox_pass_2026 --ipv4 10.144.144.2 -e tcp://225284.xyz:11010 -r 127.0.0.1:15888
 Restart=always
 RestartSec=5s
 StandardOutput=journal

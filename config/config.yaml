@@ -24,7 +24,7 @@ easytier:
   network_name: "debugbox_mesh"
   network_secret: "debugbox_pass_2026"
   ipv4: "10.144.144.2"       # 树莓派虚拟内网 IP
-  peer_node: "tcp://public.easytier.top:11010"
+  peer_node: "tcp://225284.xyz:11010"
 
 # 多串口监控通道配置说明 (可通过 debugbox-serial@<通道名>.service 独立运行)
 serial_channels:

@@ -112,7 +112,7 @@ sudo ./easytier-core \
   --network-name debugbox_mesh \
   --network-secret debugbox_pass_2026 \
   --ipv4 10.144.144.1 \
-  -e tcp://public.easytier.top:11010
+  -e tcp://225284.xyz:11010
 ```
 
 **Windows (管理员身份运行 PowerShell)：**
@@ -121,11 +121,11 @@ sudo ./easytier-core \
   --network-name debugbox_mesh `
   --network-secret debugbox_pass_2026 `
   --ipv4 10.144.144.1 `
-  -e tcp://public.easytier.top:11010
+  -e tcp://225284.xyz:11010
 ```
 
 > **注意（Clash Verge TUN 模式兼容）**：
-> 若电脑开启了 Clash Verge 的 TUN 模式，请在 Clash 中将 `easytier.top` 设为 `DIRECT` 直连，并在 TUN 的绕过网段中包含 `10.144.144.0/24`，避免 Fake-IP 拦截打洞握手。
+> 若电脑开启了 Clash Verge 的 TUN 模式，请在 Clash 中将 `225284.xyz` 设为 `DIRECT` 直连，并在 TUN 的绕过网段中包含 `10.144.144.0/24`，避免 Fake-IP 拦截打洞握手。
 
 ---
 
