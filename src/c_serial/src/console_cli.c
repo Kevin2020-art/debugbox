@@ -63,6 +63,10 @@ static int scan_active_channels(char channels[][64], char socket_paths[][128], i
     struct dirent *entry;
     while ((entry = readdir(dir)) != NULL) {
         if (strncmp(entry->d_name, "debugbox_", 9) == 0) {
+            /* 排除非串口类的控制套接字 (如 GPIO 守护进程) */
+            if (strcmp(entry->d_name, "debugbox_gpio.sock") == 0) {
+                continue;
+            }
             size_t len = strlen(entry->d_name);
             if (len > 5 && strcmp(entry->d_name + len - 5, ".sock") == 0) {
                 if (count < max_count) {

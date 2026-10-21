@@ -25,12 +25,12 @@ ACTION=="add", SUBSYSTEM=="tty", KERNELS=="1-1.3*", SYMLINK+="target_uart3", MOD
 ACTION=="add", SUBSYSTEM=="tty", KERNELS=="1-1.4*", SYMLINK+="target_uart4", MODE="0666"
 
 # ------------------------------------------------------------------------------
-# 2. 多合一 USB 串口芯片按通道号绑定 (如 FT4232H, FT2232D, CH344 等四合一芯片)
+# 2. 多合一 FTDI 串口芯片按通道号绑定 (如 FT4232H, FT2232D)
 # ------------------------------------------------------------------------------
-ACTION=="add", SUBSYSTEM=="tty", ENV{ID_USB_INTERFACE_NUM}=="00", SYMLINK+="target_uart1 target_uart", MODE="0666"
-ACTION=="add", SUBSYSTEM=="tty", ENV{ID_USB_INTERFACE_NUM}=="01", SYMLINK+="target_uart2", MODE="0666"
-ACTION=="add", SUBSYSTEM=="tty", ENV{ID_USB_INTERFACE_NUM}=="02", SYMLINK+="target_uart3", MODE="0666"
-ACTION=="add", SUBSYSTEM=="tty", ENV{ID_USB_INTERFACE_NUM}=="03", SYMLINK+="target_uart4", MODE="0666"
+ACTION=="add", SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ENV{ID_USB_INTERFACE_NUM}=="00", SYMLINK+="target_uart1 target_uart", MODE="0666"
+ACTION=="add", SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ENV{ID_USB_INTERFACE_NUM}=="01", SYMLINK+="target_uart2", MODE="0666"
+ACTION=="add", SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ENV{ID_USB_INTERFACE_NUM}=="02", SYMLINK+="target_uart3", MODE="0666"
+ACTION=="add", SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ENV{ID_USB_INTERFACE_NUM}=="03", SYMLINK+="target_uart4", MODE="0666"
 
 # ------------------------------------------------------------------------------
 # 3. 通用兜底规则 (单串口模式向下完全兼容)
