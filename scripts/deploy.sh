@@ -143,18 +143,25 @@ systemctl reload NetworkManager || true
 echo "✓ DNS 泛解析规则配置生效 (address=/#/192.168.4.1)"
 
 # 6. 安装并注册 systemd 服务
-echo ">>> [6/7] 注册并启动 systemd 开机自启服务..."
+echo ">>> [6/7] 注册并启动 systemd 开机自启服务 (含 4路全通道串口守护进程)..."
 cp "${INSTALL_DIR}/config/systemd/debugbox-gpio.service" /etc/systemd/system/
 cp "${INSTALL_DIR}/config/systemd/debugbox-network.service" /etc/systemd/system/
-cp "${INSTALL_DIR}/config/systemd/debugbox-serial.service" /etc/systemd/system/
 cp "${INSTALL_DIR}/config/systemd/debugbox-serial@.service" /etc/systemd/system/
 cp "${INSTALL_DIR}/config/systemd/debugbox-easytier.service" /etc/systemd/system/
 chmod 644 /etc/systemd/system/debugbox-*.service /etc/systemd/system/debugbox-serial@.service 2>/dev/null || true
 
+# 停用并清理旧的单串口服务
+systemctl stop debugbox-serial.service 2>/dev/null || true
+systemctl disable debugbox-serial.service 2>/dev/null || true
+rm -f /etc/systemd/system/debugbox-serial.service /run/debugbox_serial.sock
+
 systemctl daemon-reload
 systemctl enable debugbox-gpio.service
 systemctl enable debugbox-network.service
-systemctl enable debugbox-serial.service
+systemctl enable debugbox-serial@uart1.service
+systemctl enable debugbox-serial@uart2.service
+systemctl enable debugbox-serial@uart3.service
+systemctl enable debugbox-serial@uart4.service
 systemctl enable debugbox-easytier.service
 
 # 重启服务以应用最新代码
@@ -162,7 +169,10 @@ systemctl restart debugbox-gpio.service
 sleep 1
 systemctl restart debugbox-network.service
 sleep 1
-systemctl restart debugbox-serial.service
+systemctl restart debugbox-serial@uart1.service
+systemctl restart debugbox-serial@uart2.service
+systemctl restart debugbox-serial@uart3.service
+systemctl restart debugbox-serial@uart4.service
 sleep 1
 systemctl restart debugbox-easytier.service
 sleep 2
@@ -171,13 +181,16 @@ sleep 2
 echo ">>> [7/7] 验证服务运行状态..."
 GPIO_STATUS=$(systemctl is-active debugbox-gpio.service || true)
 NET_STATUS=$(systemctl is-active debugbox-network.service || true)
-SERIAL_STATUS=$(systemctl is-active debugbox-serial.service || true)
+UART1_STATUS=$(systemctl is-active debugbox-serial@uart1.service || true)
+UART2_STATUS=$(systemctl is-active debugbox-serial@uart2.service || true)
+UART3_STATUS=$(systemctl is-active debugbox-serial@uart3.service || true)
+UART4_STATUS=$(systemctl is-active debugbox-serial@uart4.service || true)
 EASYTIER_STATUS=$(systemctl is-active debugbox-easytier.service || true)
 
-echo "  - debugbox-gpio.service:     ${GPIO_STATUS}"
-echo "  - debugbox-network.service:  ${NET_STATUS}"
-echo "  - debugbox-serial.service:   ${SERIAL_STATUS}"
-echo "  - debugbox-easytier.service: ${EASYTIER_STATUS}"
+echo "  - debugbox-gpio.service:         ${GPIO_STATUS}"
+echo "  - debugbox-network.service:      ${NET_STATUS}"
+echo "  - debugbox-serial@uart1~4:       ${UART1_STATUS} / ${UART2_STATUS} / ${UART3_STATUS} / ${UART4_STATUS}"
+echo "  - debugbox-easytier.service:     ${EASYTIER_STATUS}"
 
 if [ "${GPIO_STATUS}" = "active" ] && [ "${NET_STATUS}" = "active" ] && [ "${SERIAL_STATUS}" = "active" ] && [ "${EASYTIER_STATUS}" = "active" ]; then
   echo "=================================================================="

@@ -88,17 +88,41 @@ static int scan_active_channels(char channels[][64], char socket_paths[][128], i
     return count;
 }
 
+static const char *get_port_desc(const char *channel) {
+    if (strcmp(channel, "uart1") == 0) return "蓝色 USB 3.0 上口 (靠网口)";
+    if (strcmp(channel, "uart2") == 0) return "蓝色 USB 3.0 下口 (靠网口)";
+    if (strcmp(channel, "uart3") == 0) return "黑色 USB 2.0 上口";
+    if (strcmp(channel, "uart4") == 0) return "黑色 USB 2.0 下口";
+    return "物理端口";
+}
+
 static void show_active_channels(void) {
     char channels[16][64];
     char paths[16][128];
     int count = scan_active_channels(channels, paths, 16);
 
+    /* 按通道名升序排序 (uart1, uart2, uart3, uart4) */
+    for (int i = 0; i < count - 1; i++) {
+        for (int j = i + 1; j < count; j++) {
+            if (strcmp(channels[i], channels[j]) > 0) {
+                char tc[64], tp[128];
+                memcpy(tc, channels[i], sizeof(tc));
+                memcpy(channels[i], channels[j], sizeof(channels[i]));
+                memcpy(channels[j], tc, sizeof(channels[j]));
+
+                memcpy(tp, paths[i], sizeof(tp));
+                memcpy(paths[i], paths[j], sizeof(paths[i]));
+                memcpy(paths[j], tp, sizeof(paths[j]));
+            }
+        }
+    }
+
     printf("==================================================================\n");
-    printf(">>> 当前系统在线的 DebugBox 串口通道列表\n");
+    printf(">>> 树莓派 4B 全通道物理串口状态看板 (uart1 ~ uart4)\n");
     printf("==================================================================\n");
     if (count == 0) {
         printf("⚠️  当前未检测到任何正在运行的串口服务。\n");
-        printf("   请先启动服务: sudo systemctl start debugbox-serial@uart1.service\n");
+        printf("   请执行: sudo systemctl enable --now debugbox-serial@uart{1,2,3,4}.service\n");
     } else {
         for (int i = 0; i < count; i++) {
             char dev_path[128];
@@ -114,18 +138,17 @@ static void show_active_channels(void) {
                 link_target[r] = '\0';
             }
 
-            printf("  [%d] 通道名: %-8s\n", i + 1, channels[i]);
+            printf("  [%d] 通道: %-6s  ➔  %s\n", i + 1, channels[i], get_port_desc(channels[i]));
             if (access(dev_path, F_OK) == 0) {
                 if (strlen(link_target) > 0) {
-                    printf("      硬件状态: 🟢 在线 (%s -> %s)\n", dev_path, link_target);
+                    printf("      硬件状态: 🟢 已插入在线 (%s -> %s)\n", dev_path, link_target);
                 } else {
-                    printf("      硬件状态: 🟢 在线 (%s)\n", dev_path);
+                    printf("      硬件状态: 🟢 已插入在线 (%s)\n", dev_path);
                 }
             } else {
-                printf("      硬件状态: 🔴 离线 (未检测到对应物理 USB 插口设备)\n");
+                printf("      硬件状态: 🔴 未插入设备 (等待接入 USB 工具)\n");
             }
-            printf("      套接字:   %s\n", paths[i]);
-            printf("      接入命令: debug-console %s\n\n", channels[i]);
+            printf("      接入指令: debug-console %s\n\n", channels[i]);
         }
     }
     printf("==================================================================\n");
