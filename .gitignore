@@ -2,6 +2,8 @@
 *.o
 src/c_gpio/debugbox_gpio_daemon
 src/c_gpio/gpio_ctl
+src/c_serial/bin/
+src/c_serial/obj/
 
 # Python 缓存
 __pycache__/
