@@ -29,19 +29,19 @@ easytier:
 # 多串口监控通道配置说明 (可通过 debugbox-serial@<通道名>.service 独立运行)
 serial_channels:
   uart1:
-    device: "/dev/target_uart1"  # 树莓派物理 USB 端口 1 (USB 2.0 上口)
+    device: "/dev/target_uart1"  # 蓝色 USB 3.0 上口 (靠网口 / 1-1.1)
     baud: 115200                 # 默认主控 CPU 调试串口波特率
     description: "SoC Linux Debug Console"
   uart2:
-    device: "/dev/target_uart2"  # 树莓派物理 USB 端口 2 (USB 2.0 下口)
+    device: "/dev/target_uart2"  # 蓝色 USB 3.0 下口 (靠网口 / 1-1.2)
     baud: 115200                 # MCU/单片机遥测串口波特率
     description: "MCU Telemetry Console"
   uart3:
-    device: "/dev/target_uart3"  # 树莓派物理 USB 端口 3 (USB 3.0 上口)
+    device: "/dev/target_uart3"  # 黑色 USB 2.0 上口 (1-1.3)
     baud: 9600                   # 传感器 / 4G 模组串口波特率
     description: "Sensor / 4G Modem Console"
   uart4:
-    device: "/dev/target_uart4"  # 树莓派物理 USB 端口 4 (USB 3.0 下口)
+    device: "/dev/target_uart4"  # 黑色 USB 2.0 下口 (1-1.4)
     baud: 115200                 # 备用串口
     description: "Auxiliary Console"
 

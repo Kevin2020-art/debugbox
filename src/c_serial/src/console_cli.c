@@ -101,8 +101,31 @@ static void show_active_channels(void) {
         printf("   请先启动服务: sudo systemctl start debugbox-serial@uart1.service\n");
     } else {
         for (int i = 0; i < count; i++) {
-            printf("  [%d] 通道名: %-10s  (套接字: %s)\n", i + 1, channels[i], paths[i]);
-            printf("      接入命令: debug-console %s\n", channels[i]);
+            char dev_path[128];
+            if (strcmp(channels[i], "serial") == 0) {
+                snprintf(dev_path, sizeof(dev_path), "/dev/target_uart");
+            } else {
+                snprintf(dev_path, sizeof(dev_path), "/dev/target_%.32s", channels[i]);
+            }
+
+            char link_target[128] = "";
+            ssize_t r = readlink(dev_path, link_target, sizeof(link_target) - 1);
+            if (r > 0) {
+                link_target[r] = '\0';
+            }
+
+            printf("  [%d] 通道名: %-8s\n", i + 1, channels[i]);
+            if (access(dev_path, F_OK) == 0) {
+                if (strlen(link_target) > 0) {
+                    printf("      硬件状态: 🟢 在线 (%s -> %s)\n", dev_path, link_target);
+                } else {
+                    printf("      硬件状态: 🟢 在线 (%s)\n", dev_path);
+                }
+            } else {
+                printf("      硬件状态: 🔴 离线 (未检测到对应物理 USB 插口设备)\n");
+            }
+            printf("      套接字:   %s\n", paths[i]);
+            printf("      接入命令: debug-console %s\n\n", channels[i]);
         }
     }
     printf("==================================================================\n");

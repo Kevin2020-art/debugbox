@@ -47,18 +47,19 @@
 
 ### 3. 多串口物理 USB 孔位绑定（防设备名漂移）
 
-树莓派 4B 后视 USB 插槽与系统设备名已通过 UDEV 规则永久物理绑定：
+树莓派 4B 后视 USB 插槽与系统设备名已通过 UDEV 规则永久物理绑定（实测固化）：
 
 ```
-树莓派后盖 USB 视角：
-┌─────────────────────────┐
-│   [以太网口] [USB 2.0 上口] ──> 固定绑定为 /dev/target_uart1 (向下兼容 /dev/target_uart)
-│             [USB 2.0 下口] ──> 固定绑定为 /dev/target_uart2
-│             [USB 3.0 上口] ──> 固定绑定为 /dev/target_uart3
-│             [USB 3.0 下口] ──> 固定绑定为 /dev/target_uart4
-└─────────────────────────┘
+树莓派后盖 USB 视角（接口朝向自己）：
+┌──────────┬─────────────────────────────────┬─────────────────────────────────┐
+│          │  蓝色 USB 3.0 上口 (总线 1-1.1)  │  黑色 USB 2.0 上口 (总线 1-1.3)  │
+│  以太网口  │  ──> 固定绑定为 /dev/target_uart1 │  ──> 固定绑定为 /dev/target_uart3 │
+│  (RJ45)  ├─────────────────────────────────┼─────────────────────────────────┤
+│          │  蓝色 USB 3.0 下口 (总线 1-1.2)  │  黑色 USB 2.0 下口 (总线 1-1.4)  │
+│          │  ──> 固定绑定为 /dev/target_uart2 │  ──> 固定绑定为 /dev/target_uart4 │
+└──────────┴─────────────────────────────────┴─────────────────────────────────┘
 ```
-*(无论如何热插拔、重启系统，每个 USB 孔位对应的设备名绝对固定不变)*
+*(注：1 号串口同时保留软链接 /dev/target_uart，单串口向下完全兼容)*
 
 ---
 
@@ -171,16 +172,16 @@ debug-console uart2
 
 ### 1. 启动指定通道的守护进程
 ```bash
-# 启动 1 号串口 (物理 USB 2.0 上口)
+# 启动 1 号串口 (蓝色 USB 3.0 上口 / 靠网口)
 sudo systemctl enable --now debugbox-serial@uart1.service
 
-# 启动 2 号串口 (物理 USB 2.0 下口)
+# 启动 2 号串口 (蓝色 USB 3.0 下口 / 靠网口)
 sudo systemctl enable --now debugbox-serial@uart2.service
 
-# 启动 3 号串口 (物理 USB 3.0 上口)
+# 启动 3 号串口 (黑色 USB 2.0 上口)
 sudo systemctl enable --now debugbox-serial@uart3.service
 
-# 启动 4 号串口 (物理 USB 3.0 下口)
+# 启动 4 号串口 (黑色 USB 2.0 下口)
 sudo systemctl enable --now debugbox-serial@uart4.service
 ```
 
