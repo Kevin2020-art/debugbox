@@ -192,13 +192,13 @@ echo "  - debugbox-network.service:      ${NET_STATUS}"
 echo "  - debugbox-serial@uart1~4:       ${UART1_STATUS} / ${UART2_STATUS} / ${UART3_STATUS} / ${UART4_STATUS}"
 echo "  - debugbox-easytier.service:     ${EASYTIER_STATUS}"
 
-if [ "${GPIO_STATUS}" = "active" ] && [ "${NET_STATUS}" = "active" ] && [ "${SERIAL_STATUS}" = "active" ] && [ "${EASYTIER_STATUS}" = "active" ]; then
+if [ "${GPIO_STATUS}" = "active" ] && [ "${NET_STATUS}" = "active" ] && [ "${UART1_STATUS}" = "active" ] && [ "${UART2_STATUS}" = "active" ] && [ "${UART3_STATUS}" = "active" ] && [ "${UART4_STATUS}" = "active" ] && [ "${EASYTIER_STATUS}" = "active" ]; then
   echo "=================================================================="
   echo "🎉 部署成功！全系统四大核心服务均在后台健康运行并配置开机自启！"
   echo "  - 硬件按键与 LED:    /run/debugbox_gpio.sock (gpio_ctl 调试)"
-  echo "  - 串口 24h 存盘日志:  /var/log/debugbox/serial_*.log"
-  echo "  - 工程师双向控制台:  debug-console (支持: debug-console uart1 / uart2)"
-  echo "  - 扩展多串口服务:    sudo systemctl enable --now debugbox-serial@uart2.service"
+  echo "  - 串口 24h 存盘日志:  /var/log/debugbox/uart1~4/"
+  echo "  - 工程师双向控制台:  debug-console (支持: debug-console --list / debug-console uartX)"
+  echo "  - 4 路全通道服务:    debugbox-serial@uart1 ~ uart4 已全部开机自启"
   echo "  - 异地 P2P 穿透网卡: 10.144.144.2 (EasyTier 虚拟内网)"
   echo "=================================================================="
 else
